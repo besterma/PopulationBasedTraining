@@ -7,9 +7,19 @@ import torch.nn as nn
 import torch.multiprocessing as _mp
 from torchvision.datasets import MNIST
 import torchvision.transforms as transforms
+import torch.optim as optim
+from torch.utils.data import DataLoader
 from model import Net
 from trainer import Trainer
+from vae_trainer import VAE_Trainer
 from utils import get_optimizer, exploit_and_explore
+
+import sys
+sys.path.append('../beta-tcvae')
+from vae_quant import VAE
+import lib.datasets as dset
+
+
 
 mp = _mp.get_context('spawn')
 
@@ -24,15 +34,21 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.batch_size = batch_size
         self.device = device
-        model = Net().to(device)
-        optimizer = get_optimizer(model)
-        self.trainer = Trainer(model=model,
-                               optimizer=optimizer,
-                               loss_fn=nn.CrossEntropyLoss(),
-                               train_data=train_data,
-                               test_data=test_data,
-                               batch_size=self.batch_size,
-                               device=self.device)
+        self.model = VAE(z_dim=10, use_cuda=True, tcvae=True).to(device)
+        self.optimizer = get_optimizer(self.model, optim.adam)
+        self.trainer = VAE_Trainer(model=self.model,
+                                   optimizer=self.optimizer,
+                                   loss_fn=nn.CrossEntropyLoss(),
+                                   train_data=train_data,
+                                   test_data=test_data,
+                                   batch_size=self.batch_size,
+                                   device=self.device,
+                                   train_loader=DataLoader(
+                                       dataset=dset.Shapes(),
+                                       batch_size=self.batch_size,
+                                       shuffle=True,
+                                       **{'num_workers': 4, 'pin_memory': True}
+                                   ))
 
     def run(self):
         while True:

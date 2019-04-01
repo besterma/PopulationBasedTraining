@@ -3,13 +3,13 @@ import torch
 import torch.optim as optim
 
 
-def get_optimizer(model):
+def get_optimizer(model, optimizer):
     """This is where users choose their optimizer and define the
        hyperparameter space they'd like to search."""
-    optimizer_class = optim.SGD
+    optimizer_class = optimizer
     lr = np.random.choice(np.logspace(-5, 0, base=10))
     momentum = np.random.choice(np.linspace(0.1, .9999))
-    return optimizer_class(model.parameters(), lr=lr, momentum=momentum)
+    return optimizer_class(model.parameters(), lr=lr)
 
 
 def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
