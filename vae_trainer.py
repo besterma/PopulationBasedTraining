@@ -47,7 +47,7 @@ class VAE_Trainer:
         print("finished loading checkpoint")
 
     def train(self, epoch, device):
-        dataset_size = len(self.train_loader.dataset)
+        dataset_size = len(self.train_loader)
         print("start training, dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size
         for i, x in enumerate(self.train_loader):

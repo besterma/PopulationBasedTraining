@@ -86,8 +86,8 @@ class Explorer(mp.Process):
         self.hyper_params = hyper_params
 
     def run(self):
+        print("Running in loop of explorer in epoch ", self.epoch.value)
         while True:
-            print("Running in loop of explorer in epoch ", self.epoch.value)
             if self.epoch.value > self.max_epoch:
                 print("Reached max_epoch in explorer")
                 break
