@@ -47,6 +47,10 @@ class VAE_Trainer:
         print("start training, dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size
         for i, x in enumerate(self.train_loader):
+            if iteration % 10000 == 0:
+                print("iteration", iteration, "of", dataset_size)
+            if iteration % 2 == 0:
+                continue
             self.model.train()
             self.optimizer.zero_grad()
             self.anneal_kl('shapes', self.model, iteration)
@@ -58,6 +62,7 @@ class VAE_Trainer:
             obj.mean().mul(-1).backward()
             self.elbo_running_mean.update(elbo.mean().item())
             self.optimizer.step()
+            iteration += 1
         print("finished training")
 
     def anneal_kl(self, dataset, vae, iteration):
