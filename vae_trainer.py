@@ -43,8 +43,8 @@ class VAE_Trainer:
         print("finished loading checkpoint")
 
     def train(self):
-        print("start training")
         dataset_size = len(self.train_loader.dataset)
+        print("start training, dataset_size: ", dataset_size)
         for i, x in enumerate(self.train_loader):
             self.model.train()
             #anneal_kl(args, vae, iteration)

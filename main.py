@@ -128,6 +128,7 @@ if __name__ == "__main__":
     max_epoch = 20
     pathlib.Path('checkpoints').mkdir(exist_ok=True)
     checkpoint_str = "checkpoints/task-%03d.pth"
+    print("Create mp queues")
     population = mp.Queue(maxsize=population_size)
     finish_tasks = mp.Queue(maxsize=population_size)
     epoch = mp.Value('i', 0)
@@ -135,7 +136,7 @@ if __name__ == "__main__":
         population.put(dict(id=i, score=0))
     hyper_params = {'optimizer': ["lr", "momentum"], "batch_size": True}
     train_data_path = test_data_path = './data'
-
+    print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device)
                for _ in range(3)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
