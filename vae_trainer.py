@@ -6,6 +6,7 @@ import tqdm
 import sys
 sys.path.append('../beta-tcvae')
 import lib.utils as utils
+import lib.datasets as dset
 
 
 class VAE_Trainer:
@@ -20,7 +21,10 @@ class VAE_Trainer:
         self.batch_size = batch_size
         self.task_id = None
         self.device = device
-        self.train_loader = train_loader
+        if (train_loader == 'Shapes'):
+            self.train_loader = dset.Shapes()
+        else:
+            self.train_loader = dset.Shapes()
         self.elbo_running_mean = utils.RunningAverageMeter()
 
     def set_id(self, num):

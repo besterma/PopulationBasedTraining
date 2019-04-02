@@ -49,7 +49,7 @@ class Worker(mp.Process):
                                    batch_size=self.batch_size,
                                    device=self.device,
                                    train_loader=DataLoader(
-                                       dataset=dset.Shapes(),
+                                       dataset="Shapes",
                                        batch_size=self.batch_size,
                                        shuffle=True,
                                        **{'num_workers': 4, 'pin_memory': True}
