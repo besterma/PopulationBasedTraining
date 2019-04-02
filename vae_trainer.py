@@ -42,13 +42,14 @@ class VAE_Trainer:
         self.batch_size = checkpoint['batch_size']
         print("finished loading checkpoint")
 
-    def train(self):
+    def train(self, epoch):
         dataset_size = len(self.train_loader.dataset)
         print("start training, dataset_size: ", dataset_size)
+        iteration = 0 + epoch*dataset_size
         for i, x in enumerate(self.train_loader):
             self.model.train()
-            #anneal_kl(args, vae, iteration)
             self.optimizer.zero_grad()
+            self.anneal_kl('shapes', self.model, iteration)
             x = x.cuda()
             x = Variable(x)
             obj, elbo = self.model.elbo(x, dataset_size)
@@ -58,6 +59,17 @@ class VAE_Trainer:
             self.elbo_running_mean.update(elbo.mean().item())
             self.optimizer.step()
         print("finished training")
+
+    def anneal_kl(self, dataset, vae, iteration):
+        if dataset == 'shapes':
+            warmup_iter = 7000
+        elif dataset == 'faces':
+            warmup_iter = 2500
+        else
+            warmup_iter = 5000
+
+        vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration)
+
 
     def eval(self):
         """
