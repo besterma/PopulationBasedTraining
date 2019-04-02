@@ -35,12 +35,15 @@ class VAE_Trainer:
         print("finished saving checkpoint")
 
     def load_checkpoint(self, checkpoint_path):
+        print("trying to load checkpoint")
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
+        print("finished loading checkpoint")
 
     def train(self):
+        print("start training")
         dataset_size = len(self.train_loader.dataset)
         for i, x in enumerate(self.train_loader):
             self.model.train()
@@ -54,7 +57,7 @@ class VAE_Trainer:
             obj.mean().mul(-1).backward()
             self.elbo_running_mean.update(elbo.mean().item())
             self.optimizer.step()
-
+        print("finished training")
 
     def eval(self):
         """
@@ -73,5 +76,6 @@ class VAE_Trainer:
         return accuracy
         """
         #TODO evaluate on test dataset
+        print("evaluation")
         return self.elbo_running_mean.val
 

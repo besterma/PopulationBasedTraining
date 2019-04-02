@@ -50,7 +50,9 @@ class Worker(mp.Process):
 
     def run(self):
         while True:
+            print("Running in loop of worker in epoch ", self.epoch.value)
             if self.epoch.value > self.max_epoch:
+                print("Reached max_epoch in worker")
                 break
             # Train
             task = self.population.get()
@@ -78,7 +80,9 @@ class Explorer(mp.Process):
 
     def run(self):
         while True:
+            print("Running in loop of explorer in epoch ", self.epoch.value)
             if self.epoch.value > self.max_epoch:
+                print("Reached max_epoch in worker")
                 break
             if self.population.empty() and self.finish_tasks.full():
                 print("Exploit and explore")
@@ -135,8 +139,9 @@ if __name__ == "__main__":
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device)
                for _ in range(3)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
+    print("start sequential run of worker 0")
     workers[0].run()
-    print("sucessfully run worker")
+    print("sucessfully completed run of worker 0")
     [w.start() for w in workers]
     [w.join() for w in workers]
     task = []
