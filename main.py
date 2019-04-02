@@ -25,7 +25,7 @@ mp = _mp.get_context('spawn')
 
 
 class Worker(mp.Process):
-    def __init__(self, batch_size, epoch, max_epoch, train_data, test_data, population, finish_tasks,
+    def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
                  device):
         super().__init__()
         self.epoch = epoch
@@ -35,12 +35,10 @@ class Worker(mp.Process):
         self.batch_size = batch_size
         self.device = device
         self.model = VAE(z_dim=10, use_cuda=True, tcvae=True).to(device)
-        self.optimizer = get_optimizer(self.model, optim.adam)
+        self.optimizer = get_optimizer(self.model, optim.Adam)
         self.trainer = VAE_Trainer(model=self.model,
                                    optimizer=self.optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
-                                   train_data=train_data,
-                                   test_data=test_data,
                                    batch_size=self.batch_size,
                                    device=self.device,
                                    train_loader=DataLoader(
@@ -106,6 +104,7 @@ class Explorer(mp.Process):
 
 
 if __name__ == "__main__":
+    print("Lets go!")
     parser = argparse.ArgumentParser(description="Population Based Training")
     parser.add_argument("--device", type=str, default='cuda',
                         help="")
@@ -133,11 +132,11 @@ if __name__ == "__main__":
     hyper_params = {'optimizer': ["lr", "momentum"], "batch_size": True}
     train_data_path = test_data_path = './data'
 
-    train_data = MNIST(train_data_path, True, transforms.ToTensor(), download=True)
-    test_data = MNIST(test_data_path, False, transforms.ToTensor(), download=True)
-    workers = [Worker(batch_size, epoch, max_epoch, train_data, test_data, population, finish_tasks, device)
+    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device)
                for _ in range(3)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
+    workers[0].run()
+    print("sucessfully run worker")
     [w.start() for w in workers]
     [w.join() for w in workers]
     task = []

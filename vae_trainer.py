@@ -17,8 +17,6 @@ class VAE_Trainer:
         self.model = model
         self.optimizer = optimizer
         self.loss_fn = loss_fn
-        self.train_data = train_data
-        self.test_data = test_data
         self.batch_size = batch_size
         self.task_id = None
         self.device = device
@@ -29,10 +27,12 @@ class VAE_Trainer:
         self.task_id = num
 
     def save_checkpoint(self, checkpoint_path):
+        print("trying to save checkpoint")
         checkpoint = dict(model_state_dict=self.model.state_dict(),
                           optim_state_dict=self.optimizer.state_dict(),
                           batch_size=self.batch_size)
         torch.save(checkpoint, checkpoint_path)
+        print("finished saving checkpoint")
 
     def load_checkpoint(self, checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
