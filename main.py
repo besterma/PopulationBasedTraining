@@ -34,6 +34,9 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.batch_size = batch_size
         self.device = device
+        if (device != 'cpu'):
+            self.device_id = (worker_id+1) % torch.cuda.device_count()
+        self.model = VAE(z_dim=10, use_cuda=True, tcvae=True).to(device=self.device_id)
         self.optimizer = get_optimizer(self.model, optim.Adam)
         self.trainer = VAE_Trainer(model=self.model,
                                    optimizer=self.optimizer,
@@ -46,9 +49,6 @@ class Worker(mp.Process):
                                        shuffle=True,
                                        **{'num_workers': 4, 'pin_memory': True}
                                    ))
-        if (device != 'cpu'):
-            self.device_id = (worker_id+1) % torch.cuda.device_count()
-        self.model = VAE(z_dim=10, use_cuda=True, tcvae=True).to(device=self.device_id)
 
     def run(self):
         while True:
