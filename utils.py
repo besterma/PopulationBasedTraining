@@ -11,6 +11,10 @@ def get_optimizer(model, optimizer):
     momentum = np.random.choice(np.linspace(0.1, .9999))
     return optimizer_class(model.parameters(), lr=lr)
 
+def get_optimizer_and_model_parameters(model, optimizer):
+
+    return model, optimizer
+
 
 def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
                         perturb_factors=(1.2, 0.8)):

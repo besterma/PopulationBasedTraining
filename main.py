@@ -36,7 +36,7 @@ class Worker(mp.Process):
         self.batch_size = batch_size
         self.device = device
         if (device != 'cpu'):
-            self.device_id = (worker_id+1) % torch.cuda.device_count()
+            self.device_id = (worker_id+1) % (torch.cuda.device_count() - 1) #-1 because we cont want to use card #4 as it is weaker
         self.model = VAE(z_dim=10,
                          use_cuda=True,
                          prior_dist=dist.Normal(),
@@ -123,6 +123,10 @@ if __name__ == "__main__":
                         help="")
     parser.add_argument("--batch_size", type=int, default=20,
                         help="")
+    parser.add_argument("--worker_size", type=int, default=3,
+                        help="number of worker threads, should be a multiple of #graphics cards")
+    parser.add_argument("--max_epoch", type=int, default=10,
+                        help="")
 
     args = parser.parse_args()
     # mp.set_start_method("spawn")
@@ -132,7 +136,9 @@ if __name__ == "__main__":
         device = 'cpu'
     population_size = args.population_size
     batch_size = args.batch_size
-    max_epoch = 20
+    max_epoch = args.max_epoch
+    worker_size = args.worker_size
+
     pathlib.Path('checkpoints').mkdir(exist_ok=True)
     checkpoint_str = "checkpoints/task-%03d.pth"
     print("Create mp queues")
@@ -141,11 +147,11 @@ if __name__ == "__main__":
     epoch = mp.Value('i', 0)
     for i in range(population_size):
         population.put(dict(id=i, score=0))
-    hyper_params = {'optimizer': ["lr", "momentum"], "batch_size": True}
+    hyper_params = {'optimizer': ["lr", "momentum"], "batch_size": True, 'model': ["beta"]}
     train_data_path = test_data_path = './data'
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i)
-               for i in range(3)]
+               for i in range(worker_size)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
     [w.start() for w in workers]
     [w.join() for w in workers]
