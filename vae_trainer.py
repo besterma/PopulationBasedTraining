@@ -42,7 +42,7 @@ class VAE_Trainer:
         self.batch_size = checkpoint['batch_size']
         print("finished loading checkpoint")
 
-    def train(self, epoch):
+    def train(self, epoch, device):
         dataset_size = len(self.train_loader.dataset)
         print("start training, dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size
@@ -50,7 +50,7 @@ class VAE_Trainer:
             self.model.train()
             self.optimizer.zero_grad()
             self.anneal_kl('shapes', self.model, iteration)
-            x = x.cuda()
+            x = x.cuda(device=device)
             x = Variable(x)
             obj, elbo = self.model.elbo(x, dataset_size)
             if utils.isnan(obj).any():
@@ -65,7 +65,7 @@ class VAE_Trainer:
             warmup_iter = 7000
         elif dataset == 'faces':
             warmup_iter = 2500
-        else
+        else:
             warmup_iter = 5000
 
         vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration)

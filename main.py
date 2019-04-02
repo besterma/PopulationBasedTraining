@@ -26,7 +26,7 @@ mp = _mp.get_context('spawn')
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
-                 device):
+                 device, worker_id):
         super().__init__()
         self.epoch = epoch
         self.population = population
@@ -47,6 +47,8 @@ class Worker(mp.Process):
                                        shuffle=True,
                                        **{'num_workers': 4, 'pin_memory': True}
                                    ))
+        if (device != 'cpu'):
+            self.device_id = worker_id % 3
 
     def run(self):
         while True:
@@ -61,7 +63,7 @@ class Worker(mp.Process):
             if os.path.isfile(checkpoint_path):
                 self.trainer.load_checkpoint(checkpoint_path)
             try:
-                self.trainer.train()
+                self.trainer.train(self.epoch.value, self.device_id)
                 score = self.trainer.eval()
                 self.trainer.save_checkpoint(checkpoint_path)
                 self.finish_tasks.put(dict(id=task['id'], score=score))
@@ -82,7 +84,7 @@ class Explorer(mp.Process):
         while True:
             print("Running in loop of explorer in epoch ", self.epoch.value)
             if self.epoch.value > self.max_epoch:
-                print("Reached max_epoch in worker")
+                print("Reached max_epoch in explorer")
                 break
             if self.population.empty() and self.finish_tasks.full():
                 print("Exploit and explore")
@@ -137,8 +139,8 @@ if __name__ == "__main__":
     hyper_params = {'optimizer': ["lr", "momentum"], "batch_size": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
-    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device)
-               for _ in range(3)]
+    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i)
+               for i in range(3)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
     print("start sequential run of worker 0")
     workers[0].run()
