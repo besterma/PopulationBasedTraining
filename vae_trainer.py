@@ -50,7 +50,7 @@ class VAE_Trainer:
             self.model.train()
             self.optimizer.zero_grad()
             self.anneal_kl('shapes', self.model, iteration)
-            x = x.cuda(device=device)
+            x = x.to(device=device)
             x = Variable(x)
             obj, elbo = self.model.elbo(x, dataset_size)
             if utils.isnan(obj).any():

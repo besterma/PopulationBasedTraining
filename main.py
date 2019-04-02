@@ -52,7 +52,7 @@ class Worker(mp.Process):
 
     def run(self):
         while True:
-            print("Running in loop of worker in epoch ", self.epoch.value)
+            print("Running in loop of worker in epoch ", self.epoch.value, "on gpu", self.device_id)
             if self.epoch.value > self.max_epoch:
                 print("Reached max_epoch in worker")
                 break
