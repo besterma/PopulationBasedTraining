@@ -48,7 +48,7 @@ class Worker(mp.Process):
                                        **{'num_workers': 4, 'pin_memory': True}
                                    ))
         if (device != 'cpu'):
-            self.device_id = worker_id % 3
+            self.device_id = (worker_id+1) % torch.cuda.device_count()
 
     def run(self):
         while True:
