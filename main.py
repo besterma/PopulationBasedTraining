@@ -147,9 +147,6 @@ if __name__ == "__main__":
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i)
                for i in range(3)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
-    print("start sequential run of worker 0")
-    workers[0].run()
-    print("sucessfully completed run of worker 0")
     [w.start() for w in workers]
     [w.join() for w in workers]
     task = []
