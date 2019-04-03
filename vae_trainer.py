@@ -52,7 +52,7 @@ class VAE_Trainer:
     def train(self, epoch, device):
         dataset_size = len(self.train_loader)
         print("start training with parameters B", self.model.beta, "lr",
-              self.optimizer.state_dict["lr"], "and dataset_size: ", dataset_size)
+              self.optimizer.state_dict()["lr"], "and dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size
         for i, x in enumerate(self.train_loader):
             iteration += 1
