@@ -101,7 +101,7 @@ class VAE_Trainer:
         return accuracy
         """
         print("Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
-        score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.imgs)
+        score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.imgs, self.device)
         print("Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
         return self.elbo_running_mean.val
 
