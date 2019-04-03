@@ -7,6 +7,7 @@ import sys
 sys.path.append('../beta-tcvae')
 import lib.utils as utils
 import lib.datasets as dset
+from disentanglement_metrics import mutual_info_metric_shapes
 
 
 class VAE_Trainer:
@@ -33,6 +34,7 @@ class VAE_Trainer:
     def save_checkpoint(self, checkpoint_path):
         print("trying to save checkpoint")
         checkpoint = dict(model_state_dict=self.model.state_dict(),
+                          hyperparam_state_dict=self.model.get_hyperparam_state_dict(),
                           optim_state_dict=self.optimizer.state_dict(),
                           batch_size=self.batch_size)
         torch.save(checkpoint, checkpoint_path)
@@ -42,19 +44,21 @@ class VAE_Trainer:
         print("trying to load checkpoint")
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
         print("finished loading checkpoint")
 
     def train(self, epoch, device):
         dataset_size = len(self.train_loader)
-        print("start training, dataset_size: ", dataset_size)
+        print("start training with parameters B", self.model.beta, "lr",
+              self.optimizer.state_dict["lr"], "and dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size
         for i, x in enumerate(self.train_loader):
             iteration += 1
-            if iteration % 10000 == 0:
+            if iteration % 20000 == 0:
                 print("iteration", iteration, "of", dataset_size)
-            if iteration % 2 == 0:
+            if iteration % 10 != 0:
                 continue
             self.model.train()
             self.optimizer.zero_grad()
@@ -96,7 +100,8 @@ class VAE_Trainer:
         accuracy = 100. * correct / (len(dataloader) * self.batch_size)
         return accuracy
         """
-        #TODO evaluate on test dataset
-        print("evaluation")
+        print("Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
+        score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader)
+        print("Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
         return self.elbo_running_mean.val
 
