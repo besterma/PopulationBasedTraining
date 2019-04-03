@@ -127,7 +127,7 @@ if __name__ == "__main__":
                         help="")
     parser.add_argument("--worker_size", type=int, default=3,
                         help="number of worker threads, should be a multiple of #graphics cards")
-    parser.add_argument("--max_epoch", type=int, default=10,
+    parser.add_argument("--max_epoch", type=int, default=8,
                         help="")
 
     args = parser.parse_args()
