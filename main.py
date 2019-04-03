@@ -40,7 +40,7 @@ class Worker(mp.Process):
         self.model = get_model(model_class=VAE,
                                use_cuda=True,
                                z_dim=10,
-                               device_id=device,
+                               device_id=self.device_id,
                                prior_dist=dist.Normal(),
                                q_dist=dist.Normal(),
                                hyperparameters=hyperparameters)
