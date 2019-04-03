@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import tqdm
@@ -22,10 +23,7 @@ class VAE_Trainer:
         self.batch_size = batch_size
         self.task_id = None
         self.device = device
-        if (train_loader == 'Shapes'):
-            self.train_loader = dset.Shapes()
-        else:
-            self.train_loader = dset.Shapes()
+        self.train_loader = None
         self.elbo_running_mean = utils.RunningAverageMeter()
 
     def set_id(self, num):
@@ -50,6 +48,11 @@ class VAE_Trainer:
         print("finished loading checkpoint")
 
     def train(self, epoch, device):
+        print("loading data")
+        loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
+        with np.load(loc, encoding='latin1') as dataset_zip:
+            self.train_loader = dset.Shapes()
+        print("finished_loading_data")
         dataset_size = len(self.train_loader)
         print("start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
@@ -58,7 +61,7 @@ class VAE_Trainer:
             iteration += 1
             if iteration % 20000 == 0:
                 print("iteration", iteration, "of", dataset_size)
-            if iteration % 10 != 0:
+            if iteration % 100 != 0:
                 continue
             self.model.train()
             self.optimizer.zero_grad()

@@ -20,6 +20,8 @@ from vae_quant import VAE
 import lib.datasets as dset
 import lib.dist as dist
 
+import time
+
 
 
 mp = _mp.get_context('spawn')
@@ -35,27 +37,25 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.batch_size = batch_size
         self.device = device
+        self.hyperparameters=hyperparameters
         if (device != 'cpu'):
-            self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+            if (torch.cuda.device_count() > 1):
+                self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+            else:
+                self.device_id = 0
         self.model = get_model(model_class=VAE,
                                use_cuda=True,
                                z_dim=10,
                                device_id=self.device_id,
                                prior_dist=dist.Normal(),
                                q_dist=dist.Normal(),
-                               hyperparameters=hyperparameters)
+                               hyperparameters=self.hyperparameters)
         self.optimizer = get_optimizer(self.model, optim.Adam)
         self.trainer = VAE_Trainer(model=self.model,
                                    optimizer=self.optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
                                    batch_size=self.batch_size,
-                                   device=self.device,
-                                   train_loader=DataLoader(
-                                       dataset="Shapes",
-                                       batch_size=self.batch_size,
-                                       shuffle=True,
-                                       **{'num_workers': 4, 'pin_memory': True}
-                                   ))
+                                   device=self.device)
 
     def run(self):
         while True:
@@ -77,6 +77,21 @@ class Worker(mp.Process):
             except KeyboardInterrupt:
                 break
             except ValueError:
+                self.population.put(task)
+                print("Encountered ValueError, restarting")
+                self.model = get_model(model_class=VAE,
+                                       use_cuda=True,
+                                       z_dim=10,
+                                       device_id=self.device_id,
+                                       prior_dist=dist.Normal(),
+                                       q_dist=dist.Normal(),
+                                       hyperparameters=self.hyperparameters)
+                self.optimizer = get_optimizer(self.model, optim.Adam)
+                self.trainer = VAE_Trainer(model=self.model,
+                                           optimizer=self.optimizer,
+                                           loss_fn=nn.CrossEntropyLoss(),
+                                           batch_size=self.batch_size,
+                                           device=self.device)
                 continue
 
 
@@ -116,7 +131,7 @@ class Explorer(mp.Process):
                         self.epoch.value += 1
                 for task in tasks:
                     self.population.put(task)
-
+            time.sleep(1)
 
 if __name__ == "__main__":
     print("Lets go!")
