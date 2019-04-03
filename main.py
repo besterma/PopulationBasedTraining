@@ -36,7 +36,7 @@ class Worker(mp.Process):
         self.batch_size = batch_size
         self.device = device
         if (device != 'cpu'):
-            self.device_id = (worker_id+1) % (torch.cuda.device_count() - 1) #-1 because we dont want to use card #4 as it is weaker
+            self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
         self.model = get_model(model_class=VAE,
                                use_cuda=True,
                                z_dim=10,
