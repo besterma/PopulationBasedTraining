@@ -76,6 +76,8 @@ class Worker(mp.Process):
                 self.finish_tasks.put(dict(id=task['id'], score=score))
             except KeyboardInterrupt:
                 break
+            except ValueError:
+                continue
 
 
 class Explorer(mp.Process):
