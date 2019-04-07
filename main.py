@@ -35,12 +35,12 @@ class Worker(mp.Process):
         self.population = population
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
-        self.batch_size = batch_size
         self.device = device
         self.hyperparameters=hyperparameters
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
-                self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+                #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+                self.device_id = (worker_id) % torch.cuda.device_count()
             else:
                 self.device_id = 0
         self.model = get_model(model_class=VAE,
@@ -50,7 +50,7 @@ class Worker(mp.Process):
                                prior_dist=dist.Normal(),
                                q_dist=dist.Normal(),
                                hyperparameters=self.hyperparameters)
-        self.optimizer = get_optimizer(self.model, optim.Adam)
+        self.optimizer, self.batch_size = get_optimizer(self.model, optim.Adam)
         self.trainer = VAE_Trainer(model=self.model,
                                    optimizer=self.optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
@@ -74,6 +74,7 @@ class Worker(mp.Process):
                 score = self.trainer.eval()
                 self.trainer.save_checkpoint(checkpoint_path)
                 self.finish_tasks.put(dict(id=task['id'], score=score))
+                print("Worker finished one loop")
             except KeyboardInterrupt:
                 break
             except ValueError:

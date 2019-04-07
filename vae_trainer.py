@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-import tqdm
 
 import sys
 sys.path.append('../beta-tcvae')
@@ -50,22 +49,25 @@ class VAE_Trainer:
     def train(self, epoch, device):
         print("loading data")
         loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
-        with np.load(loc, encoding='latin1') as dataset_zip:
-            self.train_loader = dset.Shapes()
+        self.train_loader = DataLoader(dataset=dset.Shapes(),
+                                       batch_size=self.batch_size,
+                                       shuffle=True,
+                                       num_workers=0,
+                                       pin_memory=True)
         print("finished_loading_data")
-        dataset_size = len(self.train_loader)
+        dataset_size = len(self.train_loader)*self.batch_size
         print("start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size
         for i, x in enumerate(self.train_loader):
-            iteration += 1
-            if iteration % 20000 == 0:
+            if iteration % 100000 == 0:
                 print("iteration", iteration, "of", dataset_size)
-            if iteration % 100 != 0:
+            if iteration % 2000 != 0:
+                iteration += x.size(0)
                 continue
             self.model.train()
             self.optimizer.zero_grad()
-            self.anneal_kl('shapes', self.model, iteration)
+            #self.anneal_kl('shapes', self.model, iteration)
             x = x.to(device=device)
             x = Variable(x)
             obj, elbo = self.model.elbo(x, dataset_size)
@@ -74,6 +76,7 @@ class VAE_Trainer:
             obj.mean().mul(-1).backward()
             self.elbo_running_mean.update(elbo.mean().item())
             self.optimizer.step()
+            iteration += x.size(0)
         print("finished training")
 
     def anneal_kl(self, dataset, vae, iteration):
@@ -104,7 +107,7 @@ class VAE_Trainer:
         return accuracy
         """
         print("Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
-        score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.imgs, self.device)
+        score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.dataset, self.device)
         print("Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
-        return self.elbo_running_mean.val
+        return score.to('cpu').numpy()
 

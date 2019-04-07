@@ -9,7 +9,8 @@ def get_optimizer(model, optimizer):
     optimizer_class = optimizer
     lr = np.random.choice(np.logspace(-5, 0, base=10))
     momentum = np.random.choice(np.linspace(0.1, .9999))
-    return optimizer_class(model.parameters(), lr=lr)
+    batch_size = np.random.choice(np.logspace(1, 5, base=2, dtype=np.int, num=5))
+    return optimizer_class(model.parameters(), lr=lr), batch_size
 
 
 def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters):
