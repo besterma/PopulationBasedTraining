@@ -1,5 +1,6 @@
 import argparse
 import os
+from shutil import copyfile
 import pathlib
 import numpy as np
 import torch
@@ -119,6 +120,7 @@ class Explorer(mp.Process):
                 tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
                 print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
                 print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
+                self.exportScores(tasks=tasks)
                 fraction = 0.2
                 cutoff = int(np.ceil(fraction * len(tasks)))
                 tops = tasks[:cutoff]
@@ -133,6 +135,13 @@ class Explorer(mp.Process):
                 for task in tasks:
                     self.population.put(task)
             time.sleep(1)
+
+    def exportScores(self, tasks):
+        with open('scores.txt', 'a+') as f:
+            f.write(self.epoch.value + '. Epoch Scores: \n')
+            for task in tasks:
+                f.write('\tId: ' + task['id'] + ' - Score: ' + task['score'])
+
 
 if __name__ == "__main__":
     print("Lets go!")
