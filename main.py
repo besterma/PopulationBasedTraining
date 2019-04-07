@@ -121,6 +121,7 @@ class Explorer(mp.Process):
                 print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
                 print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
                 self.exportScores(tasks=tasks)
+                self.exportBestModel("task-%03d.pth" % tasks[0]['id'], self.epoch.value)
                 fraction = 0.2
                 cutoff = int(np.ceil(fraction * len(tasks)))
                 tops = tasks[:cutoff]
@@ -141,6 +142,9 @@ class Explorer(mp.Process):
             f.write(self.epoch.value + '. Epoch Scores: \n')
             for task in tasks:
                 f.write('\tId: ' + task['id'] + ' - Score: ' + task['score'])
+
+    def exportBestModel(self, top_checkpoint_name, id):
+        copyfile("checkpoints/"+top_checkpoint_name, "bestmodels/model_epoch-%03d.pth" % id)
 
 
 if __name__ == "__main__":
