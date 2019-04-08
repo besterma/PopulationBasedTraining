@@ -40,8 +40,8 @@ class Worker(mp.Process):
         self.hyperparameters=hyperparameters
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
-                #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
-                self.device_id = (worker_id) % torch.cuda.device_count()
+                self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+                #self.device_id = (worker_id) % torch.cuda.device_count()
             else:
                 self.device_id = 0
         self.model = get_model(model_class=VAE,
@@ -78,9 +78,10 @@ class Worker(mp.Process):
                 print("Worker finished one loop")
             except KeyboardInterrupt:
                 break
-            except ValueError:
-                self.population.put(task)
+            except ValueError as err:
                 print("Encountered ValueError, restarting")
+                print("Error: ", err)
+                self.population.put(task)
                 self.model = get_model(model_class=VAE,
                                        use_cuda=True,
                                        z_dim=10,
