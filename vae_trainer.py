@@ -55,7 +55,7 @@ class VAE_Trainer:
                                        num_workers=0,
                                        pin_memory=True)
         print("finished_loading_data")
-        dataset_size = len(self.train_loader)*self.batch_size
+        dataset_size = len(self.train_loader.dataset)
         print("start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0 + epoch*dataset_size

@@ -88,7 +88,7 @@ class Worker(mp.Process):
                                        prior_dist=dist.Normal(),
                                        q_dist=dist.Normal(),
                                        hyperparameters=self.hyperparameters)
-                self.optimizer = get_optimizer(self.model, optim.Adam)
+                self.optimizer, self.batch_size = get_optimizer(self.model, optim.Adam)
                 self.trainer = VAE_Trainer(model=self.model,
                                            optimizer=self.optimizer,
                                            loss_fn=nn.CrossEntropyLoss(),
@@ -149,6 +149,7 @@ class Explorer(mp.Process):
 
 if __name__ == "__main__":
     print("Lets go!")
+    start = time.time()
     parser = argparse.ArgumentParser(description="Population Based Training")
     parser.add_argument("--device", type=str, default='cuda',
                         help="")
@@ -195,3 +196,8 @@ if __name__ == "__main__":
         task.append(population.get())
     task = sorted(task, key=lambda x: x['score'], reverse=True)
     print('best score on', task[0]['id'], 'is', task[0]['score'])
+    workers[-1].exportScores(task)
+    workers[-1].exportBestModel("task-%03d.pth" % task[0]['id'], epoch.value+1)
+    end = time.time()
+
+    print('Total execution time:', start-end)
