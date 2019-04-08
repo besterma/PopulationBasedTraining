@@ -60,17 +60,17 @@ class VAE_Trainer:
         dataset_size = len(self.train_loader.dataset)
         print("start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
-        iteration = 0 + epoch*dataset_size
+        iteration = 0 + dataset_size
         for i, x in enumerate(self.train_loader):
-            #if iteration % 100000 == 0:
-                #print("iteration", iteration, "of", dataset_size)
-            print("iteration", iteration, "of", dataset_size)
+            if iteration % 100000 == 0:
+                print("iteration", iteration, "of", dataset_size)
+            #print("iteration", iteration, "of", dataset_size)
             #if iteration % 10 != 0:
              #   iteration += x.size(0)
               #  continue
             self.model.train()
             self.optimizer.zero_grad()
-            self.anneal_kl('shapes', self.model, iteration)
+            self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
             x = x.to(device=device)
             x = Variable(x)
             obj, elbo = self.model.elbo(x, dataset_size)
