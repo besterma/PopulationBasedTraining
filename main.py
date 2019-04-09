@@ -39,7 +39,6 @@ class Worker(mp.Process):
         self.population = population
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
-        self.device = device
         self.hyperparameters=hyperparameters
         self.orig_batch_size = batch_size
         if (device != 'cpu'):
@@ -61,7 +60,7 @@ class Worker(mp.Process):
                                    optimizer=optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
                                    batch_size=batch_size,
-                                   device=self.device)
+                                   device=self.device_id)
 
     def run(self):
         while True:
@@ -85,7 +84,7 @@ class Worker(mp.Process):
                                            optimizer=optimizer,
                                            loss_fn=nn.CrossEntropyLoss(),
                                            batch_size=batch_size,
-                                           device=self.device)
+                                           device=self.device_id)
             # Train
             self.trainer.set_id(task['id'])
             if os.path.isfile(checkpoint_path):
@@ -93,7 +92,7 @@ class Worker(mp.Process):
             try:
                 self.trainer.train(self.epoch.value, self.device_id)
                 score = self.trainer.eval()
-                self.trainer.save_checkpoint(checkpoint_path)
+                self.trainer.save_checkpoint(checkpoint_path, self.epoch.value)
                 self.finish_tasks.put(dict(id=task['id'], score=score))
                 print("Worker finished one loop")
             except KeyboardInterrupt:
@@ -113,13 +112,14 @@ class Worker(mp.Process):
 
 
 class Explorer(mp.Process):
-    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params):
+    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id):
         super().__init__()
         self.epoch = epoch
         self.population = population
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
         self.hyper_params = hyper_params
+        self.latent_variable_plotter = LatentVariablePlotter(device_id, hyper_params)
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
@@ -137,6 +137,7 @@ class Explorer(mp.Process):
                 print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
                 self.exportScores(tasks=tasks)
                 self.exportBestModel("task-%03d.pth" % tasks[0]['id'], self.epoch.value)
+                self.latent_variable_plotter.plotLatentBestModel("checkpoints/task-{:03d}.pth".format(tasks[0]['id']), self.epoch.value, tasks[0]['id'])
                 fraction = 0.2
                 cutoff = int(np.ceil(fraction * len(tasks)))
                 tops = tasks[:cutoff]
@@ -146,8 +147,8 @@ class Explorer(mp.Process):
                     top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                     bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
                     exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
-                    with self.epoch.get_lock():
-                        self.epoch.value += 1
+                with self.epoch.get_lock():
+                    self.epoch.value += 1
                 for task in tasks:
                     self.population.put(task)
             time.sleep(1)
@@ -162,6 +163,30 @@ class Explorer(mp.Process):
     def exportBestModel(self, top_checkpoint_name, id):
         copyfile("checkpoints/"+top_checkpoint_name, "bestmodels/model_epoch-%03d.pth" % id)
 
+
+class LatentVariablePlotter(object):
+    def __init__(self, device_id, hyper_params):
+        self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
+        model = get_model(model_class=VAE,
+                          use_cuda=True,
+                          z_dim=10,
+                          device_id=device_id,
+                          prior_dist=dist.Normal(),
+                          q_dist=dist.Normal(),
+                          hyperparameters=hyper_params)
+        optimizer, _ = get_optimizer(model, optim.Adam, 16, hyper_params)
+        self.trainer = VAE_Trainer(model=model,
+                                   optimizer=optimizer,
+                                   loss_fn=nn.CrossEntropyLoss(),
+                                   batch_size=16,
+                                   device=device_id)
+
+
+    def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
+        self.trainer.load_checkpoint(top_checkpoint_name)
+        with np.load(self.loc, encoding='latin1') as dataset_zip:
+            dataset = torch.from_numpy(dataset_zip['imgs']).float()
+        plot_vs_gt_shapes(self.trainer.model, dataset, "best_latent_variables_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id))
 
 
 

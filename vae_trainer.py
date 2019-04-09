@@ -14,7 +14,7 @@ from disentanglement_metrics import mutual_info_metric_shapes
 class VAE_Trainer:
 
     def __init__(self, model, optimizer, loss_fn=None, train_data=None,
-                 test_data=None, batch_size=None, device=None, train_loader=None):
+                 test_data=None, batch_size=None, device=None, train_loader=None, hyper_params=None):
         """Note: Trainer objects don't know about the database."""
 
         self.model = model
@@ -25,6 +25,8 @@ class VAE_Trainer:
         self.device = device
         self.train_loader = None
         self.elbo_running_mean = utils.RunningAverageMeter()
+        self.training_params = []
+        self.hyper_params = hyper_params
 
     def set_id(self, num):
         self.task_id = num
@@ -34,7 +36,8 @@ class VAE_Trainer:
         checkpoint = dict(model_state_dict=self.model.state_dict(),
                           hyperparam_state_dict=self.model.get_hyperparam_state_dict(),
                           optim_state_dict=self.optimizer.state_dict(),
-                          batch_size=self.batch_size)
+                          batch_size=self.batch_size,
+                          training_params=self.training_params)
         torch.save(checkpoint, checkpoint_path)
         print("finished saving checkpoint")
 
@@ -46,7 +49,20 @@ class VAE_Trainer:
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
+        self.training_params = checkpoint['training_params']
         print("finished loading checkpoint")
+
+    def update_training_params(self, hyper_params, epoch):
+        param_dict = dict(epoch=epoch)
+        optim_state_dict = self.optimizer.state_dict()
+        for hyperparam_name in hyper_params['optimizer']:
+            param_dict[hyperparam_name] = optim_state_dict['param_groups'][0][hyperparam_name]
+        if hyper_params['batch_size']:
+            param_dict['batch_size'] = self.batch_size
+        if hyper_params['beta']:
+            param_dict['beta'] = self.model.beta
+
+        self.training_params.append(param_dict)
 
     def train(self, epoch, device):
         print("loading data")
