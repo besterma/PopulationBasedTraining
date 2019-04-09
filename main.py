@@ -189,13 +189,13 @@ class LatentVariablePlotter(object):
                                    loss_fn=nn.CrossEntropyLoss(),
                                    batch_size=16,
                                    device=device_id)
-
+        self.device_id = device_id
 
     def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
         self.trainer.load_checkpoint(top_checkpoint_name)
         with np.load(self.loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        plot_vs_gt_shapes(self.trainer.model, dataset, "best_latent_variables_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id))
+        plot_vs_gt_shapes(self.trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(self.trainer.model.z_dim), self.device_id)
 
 
 

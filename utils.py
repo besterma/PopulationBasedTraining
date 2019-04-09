@@ -44,6 +44,7 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
     hyperparam_state_dict = checkpoint['hyperparam_state_dict']
     optimizer_state_dict = checkpoint['optim_state_dict']
     batch_size = checkpoint['batch_size']
+    training_params = checkpoint['training_params']
     for hyperparam_name in hyper_params['optimizer']:
         perturb = np.random.choice(perturb_factors)
         for param_group in optimizer_state_dict['param_groups']:
@@ -58,5 +59,6 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
     checkpoint = dict(model_state_dict=state_dict,
                       hyperparam_state_dict=hyperparam_state_dict,
                       optim_state_dict=optimizer_state_dict,
-                      batch_size=batch_size)
+                      batch_size=batch_size,
+                      training_params=training_params)
     torch.save(checkpoint, bot_checkpoint_path)
