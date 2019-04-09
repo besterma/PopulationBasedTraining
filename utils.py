@@ -18,6 +18,7 @@ def get_optimizer(model, optimizer, batch_size, hyperparameters):
 
 
 def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters):
+    np.random.seed()
     if hyperparameters['beta']:
         beta = np.random.choice(range(1, 50))
     else:
