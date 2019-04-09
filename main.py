@@ -229,7 +229,7 @@ if __name__ == "__main__":
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params)
                for i in range(worker_size)]
-    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params))
+    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id))
     [w.start() for w in workers]
     [w.join() for w in workers]
     task = []

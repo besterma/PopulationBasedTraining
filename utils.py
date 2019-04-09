@@ -7,7 +7,7 @@ import torch.optim as optim
 def get_optimizer(model, optimizer, batch_size, hyperparameters):
     """This is where users choose their optimizer and define the
        hyperparameter space they'd like to search."""
-    np.random.seed(int(time.time()))
+    np.random.seed()
     optimizer_class = optimizer
     lr = np.random.choice(np.logspace(-5, 0, base=10))
     momentum = np.random.choice(np.linspace(0.1, .9999))
