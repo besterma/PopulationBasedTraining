@@ -20,6 +20,7 @@ sys.path.append('../beta-tcvae')
 from vae_quant import VAE
 import lib.datasets as dset
 import lib.dist as dist
+from plot_latent_vs_true import plot_vs_gt_shapes
 
 import time
 
@@ -103,6 +104,13 @@ class Worker(mp.Process):
                 self.population.put(task)
                 continue
 
+    def plotLatentBestModel(self, top_checkpoint_name):
+        self.trainer.load_checkpoint(top_checkpoint_name)
+        loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
+        with np.load(loc, encoding='latin1') as dataset_zip:
+            dataset = torch.from_numpy(dataset_zip['imgs']).float()
+        plot_vs_gt_shapes(self.trainer.model, dataset, "latent_variables_plot.png")
+
 
 class Explorer(mp.Process):
     def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params):
@@ -153,6 +161,8 @@ class Explorer(mp.Process):
 
     def exportBestModel(self, top_checkpoint_name, id):
         copyfile("checkpoints/"+top_checkpoint_name, "bestmodels/model_epoch-%03d.pth" % id)
+
+
 
 
 if __name__ == "__main__":
@@ -206,6 +216,7 @@ if __name__ == "__main__":
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     workers[-1].exportScores(task)
     workers[-1].exportBestModel("task-%03d.pth" % task[0]['id'], epoch.value+1)
+    workers[0].plotLatentBestModel("checkpoints/task-%03d.pth" % task[0]['id'])
     end = time.time()
 
     print('Total execution time:', start-end)
