@@ -27,6 +27,8 @@ import time
 
 mp = _mp.get_context('spawn')
 
+np.random.seed(13)
+
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
@@ -38,24 +40,26 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.device = device
         self.hyperparameters=hyperparameters
+        self.orig_batch_size = batch_size
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
                 self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
                 #self.device_id = (worker_id) % torch.cuda.device_count()
             else:
                 self.device_id = 0
-        self.model = get_model(model_class=VAE,
+        self.trainer = None
+        model = get_model(model_class=VAE,
                                use_cuda=True,
                                z_dim=10,
                                device_id=self.device_id,
                                prior_dist=dist.Normal(),
                                q_dist=dist.Normal(),
                                hyperparameters=self.hyperparameters)
-        self.optimizer, self.batch_size = get_optimizer(self.model, optim.Adam)
-        self.trainer = VAE_Trainer(model=self.model,
-                                   optimizer=self.optimizer,
+        optimizer, batch_size = get_optimizer(model, optim.Adam, batch_size, self.hyperparameters)
+        self.trainer = VAE_Trainer(model=model,
+                                   optimizer=optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
-                                   batch_size=self.batch_size,
+                                   batch_size=batch_size,
                                    device=self.device)
 
     def run(self):
@@ -64,10 +68,25 @@ class Worker(mp.Process):
             if self.epoch.value > self.max_epoch:
                 print("Reached max_epoch in worker")
                 break
-            # Train
             task = self.population.get()
-            self.trainer.set_id(task['id'])
+            print("working on task", task['id'])
             checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
+            if self.epoch.value == 0 and not os.path.isfile(checkpoint_path):
+                model = get_model(model_class=VAE,
+                                  use_cuda=True,
+                                  z_dim=10,
+                                  device_id=self.device_id,
+                                  prior_dist=dist.Normal(),
+                                  q_dist=dist.Normal(),
+                                  hyperparameters=self.hyperparameters)
+                optimizer, batch_size = get_optimizer(model, optim.Adam, self.orig_batch_size, self.hyperparameters)
+                self.trainer = VAE_Trainer(model=model,
+                                           optimizer=optimizer,
+                                           loss_fn=nn.CrossEntropyLoss(),
+                                           batch_size=batch_size,
+                                           device=self.device)
+            # Train
+            self.trainer.set_id(task['id'])
             if os.path.isfile(checkpoint_path):
                 self.trainer.load_checkpoint(checkpoint_path)
             try:
@@ -82,19 +101,6 @@ class Worker(mp.Process):
                 print("Encountered ValueError, restarting")
                 print("Error: ", err)
                 self.population.put(task)
-                self.model = get_model(model_class=VAE,
-                                       use_cuda=True,
-                                       z_dim=10,
-                                       device_id=self.device_id,
-                                       prior_dist=dist.Normal(),
-                                       q_dist=dist.Normal(),
-                                       hyperparameters=self.hyperparameters)
-                self.optimizer, self.batch_size = get_optimizer(self.model, optim.Adam)
-                self.trainer = VAE_Trainer(model=self.model,
-                                           optimizer=self.optimizer,
-                                           loss_fn=nn.CrossEntropyLoss(),
-                                           batch_size=self.batch_size,
-                                           device=self.device)
                 continue
 
 
@@ -140,9 +146,10 @@ class Explorer(mp.Process):
 
     def exportScores(self, tasks):
         with open('scores.txt', 'a+') as f:
-            f.write(self.epoch.value + '. Epoch Scores: \n')
+            f.write(str(self.epoch.value) + '. Epoch Scores: \n')
             for task in tasks:
-                f.write('\tId: ' + task['id'] + ' - Score: ' + task['score'])
+                f.write('\tId: ' + str(task['id']) + ' - Score: ' + str(task['score']))
+            f.write('\n')
 
     def exportBestModel(self, top_checkpoint_name, id):
         copyfile("checkpoints/"+top_checkpoint_name, "bestmodels/model_epoch-%03d.pth" % id)

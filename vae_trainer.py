@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+import time
 
 import sys
 sys.path.append('../beta-tcvae')
@@ -39,6 +40,7 @@ class VAE_Trainer:
 
     def load_checkpoint(self, checkpoint_path):
         print("trying to load checkpoint")
+        self.elbo_running_mean = utils.RunningAverageMeter()
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
@@ -60,7 +62,8 @@ class VAE_Trainer:
         dataset_size = len(self.train_loader.dataset)
         print("start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
-        iteration = 0 + dataset_size
+        iteration = 0
+        start = time.time()
         for i, x in enumerate(self.train_loader):
             if iteration % 100000 == 0:
                 print("iteration", iteration, "of", dataset_size)
@@ -80,7 +83,7 @@ class VAE_Trainer:
             self.elbo_running_mean.update(elbo.mean().item())
             self.optimizer.step()
             iteration += x.size(0)
-        print("finished training")
+        print("finished training in", time.time() - start, "seconds")
 
     def anneal_kl(self, dataset, vae, iteration):
         if dataset == 'shapes':
@@ -110,7 +113,9 @@ class VAE_Trainer:
         return accuracy
         """
         print("Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
+        start = time.time()
         score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.dataset, self.device)
         print("Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
+        print("Eval took", time.time() - start, "seconds")
         return score.to('cpu').numpy()
 

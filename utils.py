@@ -1,15 +1,19 @@
 import numpy as np
 import torch
+import time
 import torch.optim as optim
 
 
-def get_optimizer(model, optimizer):
+def get_optimizer(model, optimizer, batch_size, hyperparameters):
     """This is where users choose their optimizer and define the
        hyperparameter space they'd like to search."""
+    np.random.seed(int(time.time()))
     optimizer_class = optimizer
     lr = np.random.choice(np.logspace(-5, 0, base=10))
     momentum = np.random.choice(np.linspace(0.1, .9999))
-    batch_size = int(np.random.choice(np.logspace(1, 5, base=2, dtype=int, num=5)))#2,4,8,16,32
+    if hyperparameters['batch_size']:
+        batch_size = int(np.random.choice(np.logspace(1, 5, base=2, dtype=int, num=5)))#2,4,8,16,32
+
     return optimizer_class(model.parameters(), lr=lr), batch_size
 
 
