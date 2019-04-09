@@ -92,7 +92,7 @@ class Worker(mp.Process):
             try:
                 self.trainer.train(self.epoch.value, self.device_id)
                 score = self.trainer.eval()
-                self.trainer.save_checkpoint(checkpoint_path, self.epoch.value)
+                self.trainer.save_checkpoint(checkpoint_path)
                 self.finish_tasks.put(dict(id=task['id'], score=score))
                 print("Worker finished one loop")
             except KeyboardInterrupt:
@@ -135,9 +135,11 @@ class Explorer(mp.Process):
                 tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
                 print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
                 print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
+                best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
                 self.exportScores(tasks=tasks)
-                self.exportBestModel("task-%03d.pth" % tasks[0]['id'], self.epoch.value)
-                self.latent_variable_plotter.plotLatentBestModel("checkpoints/task-{:03d}.pth".format(tasks[0]['id']), self.epoch.value, tasks[0]['id'])
+                self.exportBestModel(best_model_path, self.epoch.value)
+                self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
+                self.exportBestModelParameters(best_model_path, tasks[0])
                 fraction = 0.2
                 cutoff = int(np.ceil(fraction * len(tasks)))
                 tops = tasks[:cutoff]
@@ -160,8 +162,15 @@ class Explorer(mp.Process):
                 f.write('\tId: ' + str(task['id']) + ' - Score: ' + str(task['score']))
             f.write('\n')
 
-    def exportBestModel(self, top_checkpoint_name, id):
-        copyfile("checkpoints/"+top_checkpoint_name, "bestmodels/model_epoch-%03d.pth" % id)
+    def exportBestModel(self, top_checkpoint_path, id):
+        copyfile(top_checkpoint_path, "bestmodels/model_epoch-{:03d}.pth".format(id))
+
+    def exportBestModelParameters(self, top_checkpoint_path, task):
+        checkpoint = torch.load(top_checkpoint_path)
+        with open('best_parameters.txt', 'w+') as f:
+            f.write("Score of " + str(task['score']) + " for task " + str(task['id']) +
+                    "achieved with following parameters:\n")
+            f.write(str(checkpoint['training_params']))
 
 
 class LatentVariablePlotter(object):
