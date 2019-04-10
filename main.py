@@ -123,11 +123,13 @@ class Explorer(mp.Process):
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
+        start = time.time()
         while True:
             if self.epoch.value > self.max_epoch:
                 print("Reached max_epoch in explorer")
                 break
             if self.population.empty() and self.finish_tasks.full():
+                print("One epoch took", time.time() - start, "seconds")
                 print("Exploit and explore")
                 tasks = []
                 while not self.finish_tasks.empty():
@@ -153,6 +155,7 @@ class Explorer(mp.Process):
                     self.epoch.value += 1
                 for task in tasks:
                     self.population.put(task)
+                start = time.time()
             time.sleep(1)
 
     def exportScores(self, tasks):
