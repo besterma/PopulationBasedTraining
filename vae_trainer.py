@@ -46,8 +46,8 @@ class VAE_Trainer:
         self.elbo_running_mean = utils.RunningAverageMeter()
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.model.to_device(self.device)
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
+        self.model.to_device(self.device)
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
         self.training_params = checkpoint['training_params']
@@ -96,7 +96,7 @@ class VAE_Trainer:
                 x = x.to(device=self.device)
                 x = Variable(x)
                 if iteration < 2:
-                    print("x dev:", x.device, "model:", self.model.device, "trainer:", self.device)
+                    print("x dev:", x.device, "model encoder:", self.model.encoder.device, "trainer:", self.device)
                 obj, elbo = self.model.elbo(x, dataset_size)
                 if utils.isnan(obj).any():
                     raise ValueError('NaN spotted in objective.')
