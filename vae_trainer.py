@@ -95,8 +95,6 @@ class VAE_Trainer:
                 #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
                 x = x.to(device=self.device)
                 x = Variable(x)
-                if iteration < 2:
-                    print("x dev:", x.device, "model encoder:", self.model.encoder.device, "trainer:", self.device)
                 obj, elbo = self.model.elbo(x, dataset_size)
                 if utils.isnan(obj).any():
                     raise ValueError('NaN spotted in objective.')
