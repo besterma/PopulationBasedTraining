@@ -175,7 +175,7 @@ class Explorer(mp.Process):
 
     def exportBestModelParameters(self, top_checkpoint_path, task):
         checkpoint = torch.load(top_checkpoint_path)
-        with open('best_parameters.txt', 'w+') as f:
+        with open('best_parameters.txt', 'a+') as f:
             f.write("Score of " + str(task['score']) + " for task " + str(task['id']) +
                     "achieved with following parameters:\n")
             f.write(str(checkpoint['training_params']))
