@@ -68,7 +68,7 @@ class Worker(mp.Process):
             if self.epoch.value > self.max_epoch:
                 print("Reached max_epoch in worker")
                 break
-            task = self.population.get()
+            task = self.population.get() # should be blocking for new epoch
             print("working on task", task['id'])
             checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
             if self.epoch.value == 0 and not os.path.isfile(checkpoint_path):
@@ -153,7 +153,9 @@ class Explorer(mp.Process):
                     exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
                 with self.epoch.get_lock():
                     self.epoch.value += 1
+                    print("New epoch: ", self.epoch.value)
                 for task in tasks:
+                    print("Put task", task, "in queue")
                     self.population.put(task)
                 start = time.time()
             time.sleep(1)
@@ -195,6 +197,7 @@ class LatentVariablePlotter(object):
         self.device_id = device_id
 
     def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
+        print("Plot latents of best model")
         self.trainer.load_checkpoint(top_checkpoint_name)
         with np.load(self.loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()

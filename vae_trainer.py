@@ -65,7 +65,7 @@ class VAE_Trainer:
 
         self.training_params.append(param_dict)
 
-    def train(self, epoch):
+    def train(self, epoch, num_subepochs=3):
         print("loading data")
         loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         with np.load(loc, encoding='latin1') as dataset_zip:
@@ -81,25 +81,30 @@ class VAE_Trainer:
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0
         start = time.time()
-        for i, x in enumerate(self.train_loader):
-            if iteration % 100000 == 0:
-                print("iteration", iteration, "of", dataset_size)
-            #print("iteration", iteration, "of", dataset_size)
-            #if iteration % 10 != 0:
-             #   iteration += x.size(0)
-              #  continue
-            self.model.train()
-            self.optimizer.zero_grad()
-            self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
-            x = x.to(device=self.device)
-            x = Variable(x)
-            obj, elbo = self.model.elbo(x, dataset_size)
-            if utils.isnan(obj).any():
-                raise ValueError('NaN spotted in objective.')
-            obj.mean().mul(-1).backward()
-            self.elbo_running_mean.update(elbo.mean().item())
-            self.optimizer.step()
-            iteration += x.size(0)
+        num_iterations = num_subepochs * dataset_size
+        while iteration < num_iterations:
+            for i, x in enumerate(self.train_loader):
+                if iteration % 100000 == 0:
+                    print("iteration", iteration, "of", dataset_size)
+                #print("iteration", iteration, "of", dataset_size)
+                #if iteration % 10 != 0:
+                 #   iteration += x.size(0)
+                  #  continue
+                self.model.train()
+                self.optimizer.zero_grad()
+                #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
+                x = x.to(device=self.device)
+                x = Variable(x)
+                if iteration < 2:
+                    print("x dev:", x.device, "model:", self.model.device, "trainer:", self.device)
+                obj, elbo = self.model.elbo(x, dataset_size)
+                if utils.isnan(obj).any():
+                    raise ValueError('NaN spotted in objective.')
+                obj.mean().mul(-1).backward()
+                self.elbo_running_mean.update(elbo.mean().item())
+                self.optimizer.step()
+                iteration += x.size(0)
+
         print("finished training in", time.time() - start, "seconds")
 
     def anneal_kl(self, dataset, vae, iteration):
