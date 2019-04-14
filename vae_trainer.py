@@ -46,7 +46,7 @@ class VAE_Trainer:
         self.elbo_running_mean = utils.RunningAverageMeter()
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.model.to(self.device)
+        self.model.to_device(self.device)
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
