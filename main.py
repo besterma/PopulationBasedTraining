@@ -69,6 +69,7 @@ class Worker(mp.Process):
                 print("Reached max_epoch in worker")
                 break
             task = self.population.get() # should be blocking for new epoch
+            self.trainer.set_id(task['id']) # double on purpose to have right id as early as possible
             print("working on task", task['id'])
             checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
             if self.epoch.value == 0 and not os.path.isfile(checkpoint_path):
@@ -94,6 +95,7 @@ class Worker(mp.Process):
                 score = self.trainer.eval()
                 self.trainer.save_checkpoint(checkpoint_path)
                 self.finish_tasks.put(dict(id=task['id'], score=score))
+                self.trainer.release_memory()
                 print("Worker finished one loop")
             except KeyboardInterrupt:
                 break
@@ -157,6 +159,7 @@ class Explorer(mp.Process):
                 for task in tasks:
                     print("Put task", task, "in queue")
                     self.population.put(task)
+                torch.cuda.empty_cache()
                 start = time.time()
             time.sleep(1)
 
@@ -202,6 +205,7 @@ class LatentVariablePlotter(object):
         with np.load(self.loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
         plot_vs_gt_shapes(self.trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(self.trainer.model.z_dim), self.device_id)
+        del dataset
 
 
 

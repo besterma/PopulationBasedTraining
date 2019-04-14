@@ -31,18 +31,22 @@ class VAE_Trainer:
     def set_id(self, num):
         self.task_id = num
 
+    def release_memory(self):
+        del self.train_loader
+        self.model.to_device('cpu')
+
     def save_checkpoint(self, checkpoint_path):
-        print("trying to save checkpoint")
+        print(self.task_id, "trying to save checkpoint")
         checkpoint = dict(model_state_dict=self.model.state_dict(),
                           hyperparam_state_dict=self.model.get_hyperparam_state_dict(),
                           optim_state_dict=self.optimizer.state_dict(),
                           batch_size=self.batch_size,
                           training_params=self.training_params)
         torch.save(checkpoint, checkpoint_path)
-        print("finished saving checkpoint")
+        print(self.task_id, "finished saving checkpoint")
 
     def load_checkpoint(self, checkpoint_path):
-        print("trying to load checkpoint")
+        print(self.task_id, "trying to load checkpoint")
         self.elbo_running_mean = utils.RunningAverageMeter()
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -51,22 +55,22 @@ class VAE_Trainer:
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
         self.training_params = checkpoint['training_params']
-        print("finished loading checkpoint")
+        print(self.task_id, "finished loading checkpoint")
 
-    def update_training_params(self, hyper_params, epoch):
+    def update_training_params(self, epoch):
         param_dict = dict(epoch=epoch)
         optim_state_dict = self.optimizer.state_dict()
-        for hyperparam_name in hyper_params['optimizer']:
+        for hyperparam_name in self.hyper_params['optimizer']:
             param_dict[hyperparam_name] = optim_state_dict['param_groups'][0][hyperparam_name]
-        if hyper_params['batch_size']:
+        if self.hyper_params['batch_size']:
             param_dict['batch_size'] = self.batch_size
-        if hyper_params['beta']:
+        if self.hyper_params['beta']:
             param_dict['beta'] = self.model.beta
 
         self.training_params.append(param_dict)
 
     def train(self, epoch, num_subepochs=3):
-        print("loading data")
+        print(self.task_id, "loading data")
         loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         with np.load(loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
@@ -75,9 +79,9 @@ class VAE_Trainer:
                                        shuffle=True,
                                        num_workers=0,
                                        pin_memory=True)
-        print("finished_loading_data")
+        print(self.task_id, "finished_loading_data")
         dataset_size = len(self.train_loader.dataset)
-        print("start training with parameters B", self.model.beta, "lr",
+        print(self.task_id, "start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0
         start = time.time()
@@ -85,7 +89,7 @@ class VAE_Trainer:
         while iteration < num_iterations:
             for i, x in enumerate(self.train_loader):
                 if iteration % 100000 == 0:
-                    print("iteration", iteration, "of", dataset_size)
+                    print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
                 #if iteration % 10 != 0:
                  #   iteration += x.size(0)
@@ -102,7 +106,7 @@ class VAE_Trainer:
                 self.elbo_running_mean.update(elbo.mean().item())
                 self.optimizer.step()
                 iteration += x.size(0)
-
+        self.update_training_params(epoch=epoch)
         print("finished training in", time.time() - start, "seconds")
 
     def anneal_kl(self, dataset, vae, iteration):
@@ -132,10 +136,10 @@ class VAE_Trainer:
         accuracy = 100. * correct / (len(dataloader) * self.batch_size)
         return accuracy
         """
-        print("Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
+        print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
         score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.dataset, self.device)
-        print("Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
-        print("Eval took", time.time() - start, "seconds")
+        print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
+        print(self.task_id, "Eval took", time.time() - start, "seconds")
         return score.to('cpu').numpy()
 
