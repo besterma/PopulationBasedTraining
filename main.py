@@ -43,8 +43,8 @@ class Worker(mp.Process):
         self.orig_batch_size = batch_size
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
-                self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
-                #self.device_id = (worker_id) % torch.cuda.device_count()
+                #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+                self.device_id = (worker_id) % torch.cuda.device_count()
             else:
                 self.device_id = 0
         self.trainer = None
@@ -85,12 +85,12 @@ class Worker(mp.Process):
                                            loss_fn=nn.CrossEntropyLoss(),
                                            batch_size=batch_size,
                                            device=self.device_id)
+            elif os.path.isfile(checkpoint_path):
+                self.trainer.load_checkpoint(checkpoint_path)
             # Train
             self.trainer.set_id(task['id'])
-            if os.path.isfile(checkpoint_path):
-                self.trainer.load_checkpoint(checkpoint_path)
             try:
-                self.trainer.train(self.epoch.value, self.device_id)
+                self.trainer.train(self.epoch.value)
                 score = self.trainer.eval()
                 self.trainer.save_checkpoint(checkpoint_path)
                 self.finish_tasks.put(dict(id=task['id'], score=score))

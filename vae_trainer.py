@@ -46,6 +46,7 @@ class VAE_Trainer:
         self.elbo_running_mean = utils.RunningAverageMeter()
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.to(self.device)
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
@@ -64,7 +65,7 @@ class VAE_Trainer:
 
         self.training_params.append(param_dict)
 
-    def train(self, epoch, device):
+    def train(self, epoch):
         print("loading data")
         loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         with np.load(loc, encoding='latin1') as dataset_zip:
@@ -90,7 +91,7 @@ class VAE_Trainer:
             self.model.train()
             self.optimizer.zero_grad()
             self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
-            x = x.to(device=device)
+            x = x.to(device=self.device)
             x = Variable(x)
             obj, elbo = self.model.elbo(x, dataset_size)
             if utils.isnan(obj).any():
