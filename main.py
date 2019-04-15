@@ -60,7 +60,8 @@ class Worker(mp.Process):
                                    optimizer=optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
                                    batch_size=batch_size,
-                                   device=self.device_id)
+                                   device=self.device_id,
+                                   hyper_params=self.hyperparameters)
 
     def run(self):
         while True:
