@@ -61,7 +61,7 @@ class VAE_Trainer:
         param_dict = dict(epoch=epoch)
         optim_state_dict = self.optimizer.state_dict()
         for hyperparam_name in self.hyper_params['optimizer']:
-            param_dict[hyperparam_name] = optim_state_dict['param_groups'][0][hyperparam_name]
+            param_dict[hyperparam_name] = optim_state_dict['param_groups'][0].get(hyperparam_name, "empty")
         if self.hyper_params['batch_size']:
             param_dict['batch_size'] = self.batch_size
         if self.hyper_params['beta']:

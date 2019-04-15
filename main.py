@@ -85,7 +85,8 @@ class Worker(mp.Process):
                                            optimizer=optimizer,
                                            loss_fn=nn.CrossEntropyLoss(),
                                            batch_size=batch_size,
-                                           device=self.device_id)
+                                           device=self.device_id,
+                                           hyper_params=self.hyperparameters)
             elif os.path.isfile(checkpoint_path):
                 self.trainer.load_checkpoint(checkpoint_path)
             # Train
