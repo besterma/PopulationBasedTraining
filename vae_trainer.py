@@ -3,6 +3,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import time
+from torch.nn.modules.loss import BCELoss
 
 import sys
 sys.path.append('../beta-tcvae')
@@ -166,6 +167,6 @@ class VAE_Trainer:
                     batch_size = x.size(0)
                     x = x.view(batch_size, 1, 64, 64).to(self.device)
                     xs, _, _, _ = self.model.reconstruct_img(x)
-                    acc_temp = torch.nn.binary_cross_entropy(xs, x)
+                    acc_temp = BCELoss(xs, x)
                     accuracy += acc_temp * batch_size / data_size
         return accuracy
