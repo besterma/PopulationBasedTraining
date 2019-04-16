@@ -190,7 +190,7 @@ class LatentVariablePlotter(object):
                           prior_dist=dist.Normal(),
                           q_dist=dist.Normal(),
                           hyperparameters=self.hyper_params)
-        optimizer, _ = get_optimizer(model, optim.Adam, 16, hyper_params)
+        optimizer, _ = get_optimizer(model, optim.Adam, 16, self.hyper_params)
         trainer = VAE_Trainer(model=model,
                                    optimizer=optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
