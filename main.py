@@ -189,7 +189,7 @@ class LatentVariablePlotter(object):
                           device_id=self.device_id,
                           prior_dist=dist.Normal(),
                           q_dist=dist.Normal(),
-                          hyperparameters=hyper_params)
+                          hyperparameters=self.hyper_params)
         optimizer, _ = get_optimizer(model, optim.Adam, 16, hyper_params)
         trainer = VAE_Trainer(model=model,
                                    optimizer=optimizer,
