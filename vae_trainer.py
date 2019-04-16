@@ -163,12 +163,13 @@ class VAE_Trainer:
                 randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
                 dataLoader = DataLoader(self.get_dataset(), batch_size=256, shuffle=False, num_workers=0,
                                         pin_memory=True, sampler=randomSampler)
+                loss = MSELoss()
                 data_size = len(randomSampler)
                 for i, x in enumerate(dataLoader):
                     batch_size = x.size(0)
                     x = x.view(batch_size, 1, 64, 64).to(self.device)
                     xs, _, _, _ = self.model.reconstruct_img(x)
                     xs = xs.view(batch_size, -1)
-                    acc_temp = MSELoss(xs, x)
+                    acc_temp = loss(xs, x)
                     accuracy += acc_temp * batch_size / data_size
         return accuracy.to('cpu').numpy()
