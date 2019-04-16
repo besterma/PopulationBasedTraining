@@ -26,6 +26,8 @@ class VAE_Trainer:
         self.elbo_running_mean = utils.RunningAverageMeter()
         self.training_params = []
         self.hyper_params = hyper_params
+        self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
+
 
     def set_id(self, num):
         self.task_id = num
@@ -67,11 +69,14 @@ class VAE_Trainer:
 
         self.training_params.append(param_dict)
 
+    def get_dataset(self):
+        with np.load(self.loc, encoding='latin1') as dataset_zip:
+            dataset = torch.from_numpy(dataset_zip['imgs']).float()
+        return dataset
+
     def train(self, epoch, num_subepochs=3):
         print(self.task_id, "loading data")
-        loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
-        with np.load(loc, encoding='latin1') as dataset_zip:
-            dataset = torch.from_numpy(dataset_zip['imgs']).float()
+        dataset = self.get_dataset()
         with torch.cuda.device(self.device):
             train_loader = DataLoader(dataset=dataset,
                                            batch_size=self.batch_size,
@@ -141,7 +146,7 @@ class VAE_Trainer:
         """
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
-        score, _, _ = mutual_info_metric_shapes(self.model, self.train_loader.dataset, self.device)
+        score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
         return score.to('cpu').numpy()
