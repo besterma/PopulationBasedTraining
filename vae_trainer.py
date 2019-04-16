@@ -3,7 +3,7 @@ import numpy as np
 from torch.utils.data import DataLoader, RandomSampler
 from torch.autograd import Variable
 import time
-from torch.nn.modules.loss import BCEWithLogitsLoss
+from torch.nn.modules.loss import MSELoss
 
 import sys
 sys.path.append('../beta-tcvae')
@@ -160,14 +160,15 @@ class VAE_Trainer:
         accuracy = 0
         with torch.cuda.device(self.device):
             with torch.no_grad():
-                randomSampler = RandomSampler(self.get_dataset(), num_samples = 4096)
-                dataLoader = DataLoader(self.get_dataset(), batch_size=64, shuffle=False, num_workers=0,
+                randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
+                dataLoader = DataLoader(self.get_dataset(), batch_size=256, shuffle=False, num_workers=0,
                                         pin_memory=True, sampler=randomSampler)
                 data_size = len(randomSampler)
                 for i, x in enumerate(dataLoader):
                     batch_size = x.size(0)
                     x = x.view(batch_size, 1, 64, 64).to(self.device)
                     xs, _, _, _ = self.model.reconstruct_img(x)
-                    acc_temp = BCEWithLogitsLoss(xs, x)
+                    xs = xs.view(batch_size, -1)
+                    acc_temp = MSELoss(xs, x)
                     accuracy += acc_temp * batch_size / data_size
-        return accuracy
+        return accuracy.to('cpu').numpy()
