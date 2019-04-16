@@ -171,9 +171,10 @@ class Explorer(mp.Process):
     def exportBestModelParameters(self, top_checkpoint_path, task):
         checkpoint = torch.load(top_checkpoint_path)
         with open('best_parameters.txt', 'a+') as f:
-            f.write("Score of " + str(task['score']) + " for task " + str(task['id']) +
-                    "achieved with following parameters:\n")
-            f.write(str(checkpoint['training_params']))
+            f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(task['id']) +
+                    "achieved with following parameters:")
+            for i in range(self.epoch.value):
+                f.write("\n" + str(checkpoint['training_params'][i]))
 
 
 class LatentVariablePlotter(object):
@@ -260,9 +261,11 @@ if __name__ == "__main__":
         task.append(population.get())
     task = sorted(task, key=lambda x: x['score'], reverse=True)
     print('best score on', task[0]['id'], 'is', task[0]['score'])
+    best_model_path = "checkpoints/task-%03d.pth" % task[0]['id']
     workers[-1].exportScores(task)
-    workers[-1].exportBestModel("task-%03d.pth" % task[0]['id'], epoch.value+1)
-    workers[-1].latent_variable_plotter.plotLatentBestModel("checkpoints/task-%03d.pth" % task[0]['id'])
+    workers[-1].exportBestModel(best_model_path, epoch.value+1)
+    workers[-1].exportBestModelParameters(best_model_path, task[0])
+    workers[-1].latent_variable_plotter.plotLatentBestModel(best_model_path)
     end = time.time()
 
     print('Total execution time:', start-end)

@@ -24,7 +24,7 @@ class VAE_Trainer:
         self.task_id = None
         self.device = device
         self.elbo_running_mean = utils.RunningAverageMeter()
-        self.training_params = []
+        self.training_params = dict()
         self.hyper_params = hyper_params
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
 
@@ -67,7 +67,7 @@ class VAE_Trainer:
         if self.hyper_params['beta']:
             param_dict['beta'] = self.model.beta
 
-        self.training_params.append(param_dict)
+        self.training_params[epoch] = param_dict
 
     def get_dataset(self):
         with np.load(self.loc, encoding='latin1') as dataset_zip:
@@ -144,10 +144,28 @@ class VAE_Trainer:
         accuracy = 100. * correct / (len(dataloader) * self.batch_size)
         return accuracy
         """
+
+
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
+        accuracy = self.crossEntropyLoss()
+        print(self.task_id, "got accuracy", accuracy)
         score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
         return score.to('cpu').numpy()
 
+    def crossEntropyLoss(self):
+        accuracy = 0
+        with torch.cuda.device(self.device):
+            with torch.cuda.no_grad():
+                dataLoader = DataLoader(self.get_dataset(), batch_size=1024, shuffle=True, num_workers=0,
+                                        pin_memory=True)
+                data_size = len(dataLoader.dataset)
+                for i, x in enumerate(dataLoader):
+                    batch_size = x.size(0)
+                    x = x.view(batch_size, 1, 64, 64).to(self.device)
+                    xs, _, _, _ = self.model.reconstruct_img(x)
+                    acc_temp = torch.nn.binary_cross_entropy(xs, x)
+                    accuracy += acc_temp * batch_size / data_size
+        return accuracy
