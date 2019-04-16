@@ -1,9 +1,9 @@
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 from torch.autograd import Variable
 import time
-from torch.nn.modules.loss import BCELoss
+from torch.nn.modules.loss import BCEWithLogitsLoss
 
 import sys
 sys.path.append('../beta-tcvae')
@@ -156,17 +156,18 @@ class VAE_Trainer:
         print(self.task_id, "Eval took", time.time() - start, "seconds")
         return score.to('cpu').numpy()
 
-    def crossEntropyLoss(self):
+    def crossEntropyLoss(self, num_samples = 2048):
         accuracy = 0
         with torch.cuda.device(self.device):
             with torch.no_grad():
-                dataLoader = DataLoader(self.get_dataset(), batch_size=1024, shuffle=True, num_workers=0,
-                                        pin_memory=True)
-                data_size = len(dataLoader.dataset)
+                randomSampler = RandomSampler(self.get_dataset(), num_samples = 4096)
+                dataLoader = DataLoader(self.get_dataset(), batch_size=64, shuffle=False, num_workers=0,
+                                        pin_memory=True, sampler=randomSampler)
+                data_size = len(randomSampler)
                 for i, x in enumerate(dataLoader):
                     batch_size = x.size(0)
                     x = x.view(batch_size, 1, 64, 64).to(self.device)
                     xs, _, _, _ = self.model.reconstruct_img(x)
-                    acc_temp = BCELoss(xs, x)
+                    acc_temp = BCEWithLogitsLoss(xs, x)
                     accuracy += acc_temp * batch_size / data_size
         return accuracy
