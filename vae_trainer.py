@@ -93,7 +93,7 @@ class VAE_Trainer:
         num_iterations = num_subepochs * dataset_size
         while iteration < num_iterations:
             for i, x in enumerate(train_loader):
-                if iteration % 100000 == 0:
+                if iteration % 1000000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
                 #if iteration % 10 != 0:
