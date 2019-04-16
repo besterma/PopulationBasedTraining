@@ -107,13 +107,6 @@ class Worker(mp.Process):
                 self.population.put(task)
                 continue
 
-    def plotLatentBestModel(self, top_checkpoint_name):
-        self.trainer.load_checkpoint(top_checkpoint_name)
-        loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
-        with np.load(loc, encoding='latin1') as dataset_zip:
-            dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        plot_vs_gt_shapes(self.trainer.model, dataset, "latent_variables_plot.png")
-
 
 class Explorer(mp.Process):
     def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id):
@@ -186,28 +179,35 @@ class Explorer(mp.Process):
 class LatentVariablePlotter(object):
     def __init__(self, device_id, hyper_params):
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
+        self.device_id = device_id
+        self.hyper_params = hyper_params
+
+    def get_trainer(self):
         model = get_model(model_class=VAE,
                           use_cuda=True,
                           z_dim=10,
-                          device_id=device_id,
+                          device_id=self.device_id,
                           prior_dist=dist.Normal(),
                           q_dist=dist.Normal(),
                           hyperparameters=hyper_params)
         optimizer, _ = get_optimizer(model, optim.Adam, 16, hyper_params)
-        self.trainer = VAE_Trainer(model=model,
+        trainer = VAE_Trainer(model=model,
                                    optimizer=optimizer,
                                    loss_fn=nn.CrossEntropyLoss(),
                                    batch_size=16,
-                                   device=device_id)
-        self.device_id = device_id
+                                   device=self.device_id,
+                                   hyper_params=self.hyper_params)
+        return trainer
 
     def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
         print("Plot latents of best model")
-        self.trainer.load_checkpoint(top_checkpoint_name)
+        trainer = self.get_trainer()
+        trainer.load_checkpoint(top_checkpoint_name)
         with np.load(self.loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        plot_vs_gt_shapes(self.trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(self.trainer.model.z_dim), self.device_id)
+        plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(self.trainer.model.z_dim), self.device_id)
         del dataset
+        del trainer
 
 
 
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     workers[-1].exportScores(task)
     workers[-1].exportBestModel("task-%03d.pth" % task[0]['id'], epoch.value+1)
-    workers[0].plotLatentBestModel("checkpoints/task-%03d.pth" % task[0]['id'])
+    workers[-1].latent_variable_plotter.plotLatentBestModel("checkpoints/task-%03d.pth" % task[0]['id'])
     end = time.time()
 
     print('Total execution time:', start-end)

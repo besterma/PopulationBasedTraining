@@ -23,7 +23,6 @@ class VAE_Trainer:
         self.batch_size = batch_size
         self.task_id = None
         self.device = device
-        self.train_loader = None
         self.elbo_running_mean = utils.RunningAverageMeter()
         self.training_params = []
         self.hyper_params = hyper_params
@@ -32,7 +31,6 @@ class VAE_Trainer:
         self.task_id = num
 
     def release_memory(self):
-        del self.train_loader
         self.model.to_device('cpu')
 
     def save_checkpoint(self, checkpoint_path):
@@ -74,20 +72,21 @@ class VAE_Trainer:
         loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         with np.load(loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        self.train_loader = DataLoader(dataset=dataset,
-                                       batch_size=self.batch_size,
-                                       shuffle=True,
-                                       num_workers=0,
-                                       pin_memory=True)
+        with torch.cuda.device(self.device):
+            train_loader = DataLoader(dataset=dataset,
+                                           batch_size=self.batch_size,
+                                           shuffle=True,
+                                           num_workers=0,
+                                           pin_memory=True)
         print(self.task_id, "finished_loading_data")
-        dataset_size = len(self.train_loader.dataset)
+        dataset_size = len(train_loader.dataset)
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0
         start = time.time()
         num_iterations = num_subepochs * dataset_size
         while iteration < num_iterations:
-            for i, x in enumerate(self.train_loader):
+            for i, x in enumerate(train_loader):
                 if iteration % 100000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
@@ -108,6 +107,10 @@ class VAE_Trainer:
                 iteration += x.size(0)
         self.update_training_params(epoch=epoch)
         print("finished training in", time.time() - start, "seconds")
+        train_loader = None
+        del train_loader
+        dataset = None
+        del dataset
 
     def anneal_kl(self, dataset, vae, iteration):
         if dataset == 'shapes':
