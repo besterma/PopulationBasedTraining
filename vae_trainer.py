@@ -76,6 +76,7 @@ class VAE_Trainer:
         return dataset
 
     def train(self, epoch, num_subepochs=3):
+        start = time.time()
         print(self.task_id, "loading data")
         dataset = self.get_dataset()
         with torch.cuda.device(self.device):
@@ -89,7 +90,6 @@ class VAE_Trainer:
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0
-        start = time.time()
         num_iterations = num_subepochs * dataset_size
         while iteration < num_iterations:
             for i, x in enumerate(train_loader):
