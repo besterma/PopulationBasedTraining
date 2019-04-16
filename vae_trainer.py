@@ -129,7 +129,7 @@ class VAE_Trainer:
         vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration)
 
 
-    def eval(self):
+    def eval(self, final = False):
         """
         #Evaluate model on the provided validation or test set.
         self.model.eval()
@@ -157,23 +157,27 @@ class VAE_Trainer:
               self.elbo_running_mean.val, "got MIG", score, "and RL", accuracy,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
-        return final_score
+        if final:
+            return final_score, score, accuracy, self.elbo_running_mean
+        else:
+            return final_score
 
+
+    @torch.no_grad()
     def crossEntropyLoss(self, num_samples = 2048):
         accuracy = 0
         with torch.cuda.device(self.device):
-            with torch.no_grad():
-                randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
-                dataLoader = DataLoader(self.get_dataset(), batch_size=256, shuffle=False, num_workers=0,
-                                        pin_memory=True, sampler=randomSampler)
-                loss = MSELoss()
-                data_size = len(randomSampler)
-                for i, x in enumerate(dataLoader):
-                    batch_size = x.size(0)
-                    x = x.view(batch_size, 1, 64, 64).to(self.device)
-                    xs, _, _, _ = self.model.reconstruct_img(x)
-                    xs = xs.view(batch_size, -1)
-                    x = x.view(batch_size, -1)
-                    acc_temp = loss(xs, x)
-                    accuracy += acc_temp * batch_size / data_size
+            randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
+            dataLoader = DataLoader(self.get_dataset(), batch_size=256, shuffle=False, num_workers=0,
+                                    pin_memory=True, sampler=randomSampler)
+            loss = MSELoss()
+            data_size = len(randomSampler)
+            for i, x in enumerate(dataLoader):
+                batch_size = x.size(0)
+                x = x.view(batch_size, 1, 64, 64).to(self.device)
+                xs, _, _, _ = self.model.reconstruct_img(x)
+                xs = xs.view(batch_size, -1)
+                x = x.view(batch_size, -1)
+                acc_temp = loss(xs, x)
+                accuracy += acc_temp * batch_size / data_size
         return accuracy.to('cpu').numpy()

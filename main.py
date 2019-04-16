@@ -172,7 +172,7 @@ class Explorer(mp.Process):
         checkpoint = torch.load(top_checkpoint_path)
         with open('best_parameters.txt', 'a+') as f:
             f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(task['id']) +
-                    "achieved with following parameters:")
+                    " achieved with following parameters:")
             for i in range(self.epoch.value):
                 f.write("\n" + str(checkpoint['training_params'][i]))
 
