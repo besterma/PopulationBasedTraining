@@ -158,7 +158,7 @@ class VAE_Trainer:
     def crossEntropyLoss(self):
         accuracy = 0
         with torch.cuda.device(self.device):
-            with torch.cuda.no_grad():
+            with torch.no_grad():
                 dataLoader = DataLoader(self.get_dataset(), batch_size=1024, shuffle=True, num_workers=0,
                                         pin_memory=True)
                 data_size = len(dataLoader.dataset)
