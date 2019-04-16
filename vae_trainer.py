@@ -149,7 +149,7 @@ class VAE_Trainer:
 
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
-        accuracy = self.crossEntropyLoss()
+        accuracy = self.reconstructionError()
         score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
         score = score.to('cpu').numpy()
         final_score = score + 0.2 * (1 - accuracy * 100)
@@ -164,7 +164,7 @@ class VAE_Trainer:
 
 
     @torch.no_grad()
-    def crossEntropyLoss(self, num_samples = 2048):
+    def reconstructionError(self, num_samples = 2048):
         accuracy = 0
         with torch.cuda.device(self.device):
             randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
