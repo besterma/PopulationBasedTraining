@@ -205,7 +205,7 @@ class LatentVariablePlotter(object):
         trainer.load_checkpoint(top_checkpoint_name)
         with np.load(self.loc, encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(self.trainer.model.z_dim), self.device_id)
+        plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
         del dataset
         del trainer
 
