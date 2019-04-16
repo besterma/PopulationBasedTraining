@@ -150,11 +150,12 @@ class VAE_Trainer:
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
         accuracy = self.crossEntropyLoss()
-        print(self.task_id, "got accuracy", accuracy)
         score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
-        print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val, "got MIG", score)
+        score = score.to('cpu').numpy()
+        print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
+              self.elbo_running_mean.val, "got MIG", score, "and RL", accuracy)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
-        return score.to('cpu').numpy()
+        return score + 0.5 * (1 - accuracy * 100)
 
     def crossEntropyLoss(self, num_samples = 2048):
         accuracy = 0
@@ -170,6 +171,7 @@ class VAE_Trainer:
                     x = x.view(batch_size, 1, 64, 64).to(self.device)
                     xs, _, _, _ = self.model.reconstruct_img(x)
                     xs = xs.view(batch_size, -1)
+                    x = x.view(batch_size, -1)
                     acc_temp = loss(xs, x)
                     accuracy += acc_temp * batch_size / data_size
         return accuracy.to('cpu').numpy()
