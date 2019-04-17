@@ -112,6 +112,7 @@ class VAE_Trainer:
                 self.optimizer.step()
                 iteration += x.size(0)
         self.update_training_params(epoch=epoch)
+        torch.cuda.empty_cache()
         print("finished training in", time.time() - start, "seconds")
         train_loader = None
         del train_loader

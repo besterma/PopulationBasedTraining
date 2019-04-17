@@ -47,21 +47,6 @@ class Worker(mp.Process):
                 self.device_id = (worker_id) % torch.cuda.device_count()
             else:
                 self.device_id = 0
-        self.trainer = None
-        model = get_model(model_class=VAE,
-                               use_cuda=True,
-                               z_dim=10,
-                               device_id=self.device_id,
-                               prior_dist=dist.Normal(),
-                               q_dist=dist.Normal(),
-                               hyperparameters=self.hyperparameters)
-        optimizer, batch_size = get_optimizer(model, optim.Adam, batch_size, self.hyperparameters)
-        self.trainer = VAE_Trainer(model=model,
-                                   optimizer=optimizer,
-                                   loss_fn=nn.CrossEntropyLoss(),
-                                   batch_size=batch_size,
-                                   device=self.device_id,
-                                   hyper_params=self.hyperparameters)
 
     def run(self):
         while True:
@@ -70,40 +55,44 @@ class Worker(mp.Process):
                 print("Reached max_epoch in worker")
                 break
             task = self.population.get() # should be blocking for new epoch
-            self.trainer.set_id(task['id']) # double on purpose to have right id as early as possible
             print("working on task", task['id'])
             checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
-            if self.epoch.value == 0 and not os.path.isfile(checkpoint_path):
-                model = get_model(model_class=VAE,
-                                  use_cuda=True,
-                                  z_dim=10,
-                                  device_id=self.device_id,
-                                  prior_dist=dist.Normal(),
-                                  q_dist=dist.Normal(),
-                                  hyperparameters=self.hyperparameters)
-                optimizer, batch_size = get_optimizer(model, optim.Adam, self.orig_batch_size, self.hyperparameters)
-                self.trainer = VAE_Trainer(model=model,
-                                           optimizer=optimizer,
-                                           loss_fn=nn.CrossEntropyLoss(),
-                                           batch_size=batch_size,
-                                           device=self.device_id,
-                                           hyper_params=self.hyperparameters)
-            elif os.path.isfile(checkpoint_path):
-                self.trainer.load_checkpoint(checkpoint_path)
+            model = get_model(model_class=VAE,
+                              use_cuda=True,
+                              z_dim=10,
+                              device_id=self.device_id,
+                              prior_dist=dist.Normal(),
+                              q_dist=dist.Normal(),
+                              hyperparameters=self.hyperparameters)
+            optimizer, batch_size = get_optimizer(model, optim.Adam, self.orig_batch_size, self.hyperparameters)
+            trainer = VAE_Trainer(model=model,
+                                       optimizer=optimizer,
+                                       loss_fn=nn.CrossEntropyLoss(),
+                                       batch_size=batch_size,
+                                       device=self.device_id,
+                                       hyper_params=self.hyperparameters)
+            trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
+            if os.path.isfile(checkpoint_path):
+                trainer.load_checkpoint(checkpoint_path)
             # Train
-            self.trainer.set_id(task['id'])
+            trainer.set_id(task['id'])
             try:
-                self.trainer.train(self.epoch.value)
-                score = self.trainer.eval()
-                self.trainer.save_checkpoint(checkpoint_path)
+                trainer.train(self.epoch.value)
+                score = trainer.eval()
+                trainer.save_checkpoint(checkpoint_path)
                 self.finish_tasks.put(dict(id=task['id'], score=score))
-                self.trainer.release_memory()
+                trainer = None
+                del trainer
+                torch.cuda.empty_cache()
                 print("Worker finished one loop")
             except KeyboardInterrupt:
                 break
             except ValueError as err:
                 print("Encountered ValueError, restarting")
                 print("Error: ", err)
+                trainer = None
+                del trainer
+                torch.cuda.empty_cache()
                 self.population.put(task)
                 continue
 
@@ -209,6 +198,7 @@ class LatentVariablePlotter(object):
         plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
         del dataset
         del trainer
+        torch.cuda.empty_cache()
 
 
 
@@ -226,6 +216,8 @@ if __name__ == "__main__":
                         help="number of worker threads, should be a multiple of #graphics cards")
     parser.add_argument("--max_epoch", type=int, default=8,
                         help="")
+    parser.add_argument("--start_epoch", type=int, default=0,
+                        help="define start epoch when continuing training")
 
     args = parser.parse_args()
     # mp.set_start_method("spawn")
@@ -243,7 +235,7 @@ if __name__ == "__main__":
     print("Create mp queues")
     population = mp.Queue(maxsize=population_size)
     finish_tasks = mp.Queue(maxsize=population_size)
-    epoch = mp.Value('i', 0)
+    epoch = mp.Value('i', args.start_epoch)
     for i in range(population_size):
         population.put(dict(id=i, score=0))
     hyper_params = {'optimizer': ["lr"], "batch_size": False, "beta": True}
