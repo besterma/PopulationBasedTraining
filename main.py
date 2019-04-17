@@ -49,52 +49,53 @@ class Worker(mp.Process):
                 self.device_id = 0
 
     def run(self):
-        while True:
-            print("Running in loop of worker in epoch ", self.epoch.value, "on gpu", self.device_id)
-            if self.epoch.value > self.max_epoch:
-                print("Reached max_epoch in worker")
-                break
-            task = self.population.get() # should be blocking for new epoch
-            print("working on task", task['id'])
-            checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
-            model = get_model(model_class=VAE,
-                              use_cuda=True,
-                              z_dim=10,
-                              device_id=self.device_id,
-                              prior_dist=dist.Normal(),
-                              q_dist=dist.Normal(),
-                              hyperparameters=self.hyperparameters)
-            optimizer, batch_size = get_optimizer(model, optim.Adam, self.orig_batch_size, self.hyperparameters)
-            trainer = VAE_Trainer(model=model,
-                                       optimizer=optimizer,
-                                       loss_fn=nn.CrossEntropyLoss(),
-                                       batch_size=batch_size,
-                                       device=self.device_id,
-                                       hyper_params=self.hyperparameters)
-            trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
-            if os.path.isfile(checkpoint_path):
-                trainer.load_checkpoint(checkpoint_path)
-            # Train
-            trainer.set_id(task['id'])
-            try:
-                trainer.train(self.epoch.value)
-                score = trainer.eval()
-                trainer.save_checkpoint(checkpoint_path)
-                self.finish_tasks.put(dict(id=task['id'], score=score))
-                trainer = None
-                del trainer
-                torch.cuda.empty_cache()
-                print("Worker finished one loop")
-            except KeyboardInterrupt:
-                break
-            except ValueError as err:
-                print("Encountered ValueError, restarting")
-                print("Error: ", err)
-                trainer = None
-                del trainer
-                torch.cuda.empty_cache()
-                self.population.put(task)
-                continue
+        with torch.cuda.device(self.device_id):
+            while True:
+                print("Running in loop of worker in epoch ", self.epoch.value, "on gpu", self.device_id)
+                if self.epoch.value > self.max_epoch:
+                    print("Reached max_epoch in worker")
+                    break
+                task = self.population.get() # should be blocking for new epoch
+                print("working on task", task['id'])
+                checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
+                model = get_model(model_class=VAE,
+                                  use_cuda=True,
+                                  z_dim=10,
+                                  device_id=self.device_id,
+                                  prior_dist=dist.Normal(),
+                                  q_dist=dist.Normal(),
+                                  hyperparameters=self.hyperparameters)
+                optimizer, batch_size = get_optimizer(model, optim.Adam, self.orig_batch_size, self.hyperparameters)
+                trainer = VAE_Trainer(model=model,
+                                           optimizer=optimizer,
+                                           loss_fn=nn.CrossEntropyLoss(),
+                                           batch_size=batch_size,
+                                           device=self.device_id,
+                                           hyper_params=self.hyperparameters)
+                trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
+                if os.path.isfile(checkpoint_path):
+                    trainer.load_checkpoint(checkpoint_path)
+                # Train
+                trainer.set_id(task['id'])
+                try:
+                    trainer.train(self.epoch.value)
+                    score = trainer.eval()
+                    trainer.save_checkpoint(checkpoint_path)
+                    self.finish_tasks.put(dict(id=task['id'], score=score))
+                    trainer = None
+                    del trainer
+                    torch.cuda.empty_cache()
+                    print("Worker finished one loop")
+                except KeyboardInterrupt:
+                    break
+                except ValueError as err:
+                    print("Encountered ValueError, restarting")
+                    print("Error: ", err)
+                    trainer = None
+                    del trainer
+                    torch.cuda.empty_cache()
+                    self.population.put(task)
+                    continue
 
 
 class Explorer(mp.Process):
@@ -105,53 +106,57 @@ class Explorer(mp.Process):
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
         self.hyper_params = hyper_params
-        self.latent_variable_plotter = LatentVariablePlotter(device_id, hyper_params)
+        self.latent_variable_plotter = LatentVariablePlotter(device_id+1, hyper_params)
+        self.device_id = device_id
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
         start = time.time()
-        while True:
-            if self.epoch.value > self.max_epoch:
-                print("Reached max_epoch in explorer")
-                break
-            if self.population.empty() and self.finish_tasks.full():
-                print("One epoch took", time.time() - start, "seconds")
-                print("Exploit and explore")
-                tasks = []
-                while not self.finish_tasks.empty():
-                    tasks.append(self.finish_tasks.get())
-                tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
-                print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
-                print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
-                best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
-                self.exportScores(tasks=tasks)
-                self.exportBestModel(best_model_path, self.epoch.value)
-                self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
-                self.exportBestModelParameters(best_model_path, tasks[0])
-                fraction = 0.2
-                cutoff = int(np.ceil(fraction * len(tasks)))
-                tops = tasks[:cutoff]
-                bottoms = tasks[len(tasks) - cutoff:]
-                for bottom in bottoms:
-                    top = np.random.choice(tops)
-                    top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
-                    bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
-                    exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
-                with self.epoch.get_lock():
-                    self.epoch.value += 1
-                    print("New epoch: ", self.epoch.value)
-                for task in tasks:
-                    print("Put task", task, "in queue")
-                    self.population.put(task)
-                torch.cuda.empty_cache()
-                start = time.time()
-            time.sleep(1)
+        with torch.cuda.device(self.device_id):
+            while True:
+                if self.epoch.value > self.max_epoch:
+                    print("Reached max_epoch in explorer")
+                    break
+                if self.population.empty() and self.finish_tasks.full():
+                    print("One epoch took", time.time() - start, "seconds")
+                    print("Exploit and explore")
+                    time.sleep(1)   #Bug of not having all tasks in finish_tasks
+                    tasks = []
+                    while not self.finish_tasks.empty():
+                        tasks.append(self.finish_tasks.get())
+                    tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
+                    print("Total #tasks:", len(tasks))
+                    print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
+                    print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
+                    best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
+                    self.exportScores(tasks=tasks)
+                    self.exportBestModel(best_model_path, self.epoch.value)
+                    self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
+                    self.exportBestModelParameters(best_model_path, tasks[0])
+                    fraction = 0.2
+                    cutoff = int(np.ceil(fraction * len(tasks)))
+                    tops = tasks[:cutoff]
+                    bottoms = tasks[len(tasks) - cutoff:]
+                    for bottom in bottoms:
+                        top = np.random.choice(tops)
+                        top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
+                        bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
+                        exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
+                    with self.epoch.get_lock():
+                        self.epoch.value += 1
+                        print("New epoch: ", self.epoch.value)
+                    for task in tasks:
+                        print("Put task", task, "in queue")
+                        self.population.put(task)
+                    torch.cuda.empty_cache()
+                    start = time.time()
+                time.sleep(1)
 
     def exportScores(self, tasks):
         with open('scores.txt', 'a+') as f:
-            f.write(str(self.epoch.value) + '. Epoch Scores: \n')
+            f.write(str(self.epoch.value) + '. Epoch Scores:')
             for task in tasks:
-                f.write('\tId: ' + str(task['id']) + ' - Score: ' + str(task['score']))
+                f.write('\n\tId: ' + str(task['id']) + ' - Score: ' + str(task['score']))
             f.write('\n')
 
     def exportBestModel(self, top_checkpoint_path, id):
@@ -190,15 +195,16 @@ class LatentVariablePlotter(object):
         return trainer
 
     def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
-        print("Plot latents of best model")
-        trainer = self.get_trainer()
-        trainer.load_checkpoint(top_checkpoint_name)
-        with np.load(self.loc, encoding='latin1') as dataset_zip:
-            dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
-        del dataset
-        del trainer
-        torch.cuda.empty_cache()
+        with torch.cuda.device(self.device_id):
+            print("Plot latents of best model")
+            trainer = self.get_trainer()
+            trainer.load_checkpoint(top_checkpoint_name)
+            with np.load(self.loc, encoding='latin1') as dataset_zip:
+                dataset = torch.from_numpy(dataset_zip['imgs']).float()
+            plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
+            del dataset
+            del trainer
+            torch.cuda.empty_cache()
 
 
 
