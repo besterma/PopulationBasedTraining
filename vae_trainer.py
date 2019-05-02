@@ -26,6 +26,7 @@ class VAE_Trainer:
         self.device = device
         self.elbo_running_mean = utils.RunningAverageMeter()
         self.training_params = dict()
+        self.scores = dict()
         self.hyper_params = hyper_params
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
 
@@ -42,7 +43,8 @@ class VAE_Trainer:
                           hyperparam_state_dict=self.model.get_hyperparam_state_dict(),
                           optim_state_dict=self.optimizer.state_dict(),
                           batch_size=self.batch_size,
-                          training_params=self.training_params)
+                          training_params=self.training_params,
+                          scores = self.scores)
         torch.save(checkpoint, checkpoint_path)
         print(self.task_id, "finished saving checkpoint")
 
@@ -56,6 +58,7 @@ class VAE_Trainer:
         self.optimizer.load_state_dict(checkpoint['optim_state_dict'])
         self.batch_size = checkpoint['batch_size']
         self.training_params = checkpoint['training_params']
+        self.scores = checkpoint["scores"]
         print(self.task_id, "finished loading checkpoint")
 
     def update_training_params(self, epoch):
@@ -69,6 +72,12 @@ class VAE_Trainer:
             param_dict['beta'] = self.model.beta
 
         self.training_params[epoch] = param_dict
+
+    def update_scores(self, epoch, final_score, mig_score, accuracy, elbo, active_units, n_active):
+        score_dict = dict(epoch=epoch, final_score=final_score, mig=mig_score, mse=accuracy,
+                          elbo=elbo, active_units=active_units, n_active=n_active)
+        self.scores[epoch] = score_dict
+
 
     def get_dataset(self):
         with np.load(self.loc, encoding='latin1') as dataset_zip:
@@ -130,7 +139,7 @@ class VAE_Trainer:
         vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration)
 
 
-    def eval(self, final = False):
+    def eval(self, epoch=0, final = False):
         """
         #Evaluate model on the provided validation or test set.
         self.model.eval()
@@ -150,22 +159,25 @@ class VAE_Trainer:
 
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
-        accuracy = self.reconstructionError()
-        score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
-        score = score.to('cpu').numpy()
-        final_score = score + 0.2 * (1 - accuracy * 100)
+        accuracy, active_units, n_active = self.reconstructionError()
+        mig_score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
+        mig_score = mig_score.to('cpu').numpy()
+        final_score = mig_score + 0.2 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              self.elbo_running_mean.val, "got MIG", score, "and RL", accuracy,
+              self.elbo_running_mean.val, "got MIG", mig_score, "and RL", accuracy,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
+        self.update_scores(epoch=epoch, final_score=final_score, mig_score=mig_score, accuracy=accuracy,
+                           elbo=self.elbo_running_mean, active_units=active_units, n_active=n_active)
         if final:
-            return final_score, score, accuracy, self.elbo_running_mean
+            return final_score, mig_score, accuracy, self.elbo_running_mean, active_units, n_active
         else:
             return final_score
 
 
     @torch.no_grad()
     def reconstructionError(self, num_samples = 2048):
+        VAR_THRESHOLD = 1e-2
         accuracy = 0
         with torch.cuda.device(self.device):
             randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
@@ -173,12 +185,27 @@ class VAE_Trainer:
                                     pin_memory=True, sampler=randomSampler)
             loss = MSELoss()
             data_size = len(randomSampler)
+            N = len(DataLoader.dataset)
+            K = self.model.z_dim
+            Z = self.model.q_dist.nparams
+            qz_params = torch.Tensor(N, K, Z).to(self.device)
             for i, x in enumerate(dataLoader):
                 batch_size = x.size(0)
+                n = dataLoader.batch_size * i
                 x = x.view(batch_size, 1, 64, 64).to(self.device)
                 xs, _, _, _ = self.model.reconstruct_img(x)
+                qz_params[n:n + batch_size] = self.model.encoder.forward(x).\
+                                                view(batch_size, K, Z).\
+                                                data.to(self.device)
                 xs = xs.view(batch_size, -1)
                 x = x.view(batch_size, -1)
                 acc_temp = loss(xs, x)
                 accuracy += acc_temp * batch_size / data_size
-        return accuracy.to('cpu').numpy()
+
+            qz_means = qz_params[:,:,0]
+            var = torch.std(qz_means.contiguous().view(N, K), dim=0).pow(2)
+            active_units = torch.arange(0, K)[var > VAR_THRESHOLD].to("cpu").numpy()
+            n_active = len(active_units)
+
+
+        return accuracy.to('cpu').numpy(), active_units, n_active

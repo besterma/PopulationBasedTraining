@@ -79,9 +79,9 @@ class Worker(mp.Process):
                 trainer.set_id(task['id'])
                 try:
                     trainer.train(self.epoch.value)
-                    score = trainer.eval()
+                    score, mig, accuracy, elbo, active_units, n_active = trainer.eval(epoch=self.epoch.value, final=True)
                     trainer.save_checkpoint(checkpoint_path)
-                    self.finish_tasks.put(dict(id=task['id'], score=score))
+                    self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo, active_units=active_units, n_active=n_active))
                     trainer = None
                     del trainer
                     torch.cuda.empty_cache()
@@ -168,7 +168,7 @@ class Explorer(mp.Process):
             f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(task['id']) +
                     " achieved with following parameters:")
             for i in range(self.epoch.value):
-                f.write("\n" + str(checkpoint['training_params'][i]))
+                f.write("\n" + str(checkpoint['training_params'][i]) + str(checkpoint['scores'][i]))
 
 
 class LatentVariablePlotter(object):
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     finish_tasks = mp.Queue(maxsize=population_size)
     epoch = mp.Value('i', args.start_epoch)
     for i in range(population_size):
-        population.put(dict(id=i, score=0))
+        population.put(dict(id=i, score=0, mig=0, accuracy=0, elbo=0, active_units=[], n_active=0))
     hyper_params = {'optimizer': ["lr"], "batch_size": False, "beta": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
