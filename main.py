@@ -1,5 +1,6 @@
 import argparse
 import os
+import pickle
 from shutil import copyfile
 import pathlib
 import numpy as np
@@ -33,7 +34,7 @@ np.random.seed(13)
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
-                 device, worker_id, hyperparameters):
+                 device, worker_id, hyperparameters, result_dict):
         super().__init__()
         self.epoch = epoch
         self.population = population
@@ -41,6 +42,7 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.hyperparameters=hyperparameters
         self.orig_batch_size = batch_size
+        self.result_dict = result_dict
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
                 #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
@@ -99,7 +101,7 @@ class Worker(mp.Process):
 
 
 class Explorer(mp.Process):
-    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id):
+    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id, result_dict):
         super().__init__()
         self.epoch = epoch
         self.population = population
@@ -108,9 +110,12 @@ class Explorer(mp.Process):
         self.hyper_params = hyper_params
         self.latent_variable_plotter = LatentVariablePlotter(device_id+1, hyper_params)
         self.device_id = device_id
+        self.result_dict = result_dict
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
+        self.result_dict['scores'] = dict()
+        self.result_dict['parameters'] = dict()
         start = time.time()
         with torch.cuda.device(self.device_id):
             while True:
@@ -130,8 +135,9 @@ class Explorer(mp.Process):
                     print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
                     best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
                     self.exportScores(tasks=tasks)
-                    self.exportBestModel(best_model_path, self.epoch.value)
+                    self.exportBestModel(best_model_path)
                     self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
+                    self.saveModelParameters(tasks=tasks)
                     self.exportBestModelParameters(best_model_path, tasks[0])
                     fraction = 0.2
                     cutoff = int(np.ceil(fraction * len(tasks)))
@@ -159,8 +165,10 @@ class Explorer(mp.Process):
                 f.write('\n\tId: ' + str(task['id']) + ' - Score: ' + str(task['score']))
             f.write('\n')
 
-    def exportBestModel(self, top_checkpoint_path, id):
-        copyfile(top_checkpoint_path, "bestmodels/model_epoch-{:03d}.pth".format(id))
+            self.result_dict['scores'][self.epoch.value] = tasks
+
+    def exportBestModel(self, top_checkpoint_path):
+        copyfile(top_checkpoint_path, "bestmodels/model_epoch-{:03d}.pth".format(self.epoch.value))
 
     def exportBestModelParameters(self, top_checkpoint_path, task):
         checkpoint = torch.load(top_checkpoint_path)
@@ -169,6 +177,21 @@ class Explorer(mp.Process):
                     " achieved with following parameters:")
             for i in range(self.epoch.value):
                 f.write("\n" + str(checkpoint['training_params'][i]) + str(checkpoint['scores'][i]))
+
+    def saveModelParameters(self, tasks):
+        temp_dict = dict()
+        for task in tasks:
+            checkpoint = torch.load("checkpoints/task-{:03d}.pth".format(task['id']))
+            checkpoint_dict = dict()
+            checkpoint_dict['training_params'] = checkpoint['training_params']
+            checkpoint_dict['scores'] = checkpoint['scores']
+            temp_dict[task['id']] = checkpoint_dict
+
+        self.result_dict[self.epoch.value] = temp_dict
+
+        pickle_out = open("parameters-{:03d}.pickle".format(self.epoch.value), "wb")
+        pickle.dump(self.result_dict, pickle_out)
+        pickle_out.close()
 
 
 class LatentVariablePlotter(object):
@@ -242,6 +265,7 @@ if __name__ == "__main__":
     population = mp.Queue(maxsize=population_size)
     finish_tasks = mp.Queue(maxsize=population_size)
     epoch = mp.Value('i', args.start_epoch)
+    results = dict()
     for i in range(population_size):
         population.put(dict(id=i, score=0, mig=0, accuracy=0, elbo=0, active_units=[], n_active=0))
     hyper_params = {'optimizer': ["lr"], "batch_size": False, "beta": True}
