@@ -158,6 +158,7 @@ class Explorer(mp.Process):
                 time.sleep(1)
 
     def exportScores(self, tasks):
+        print("Explorer export scores")
         with open('scores.txt', 'a+') as f:
             f.write(str(self.epoch.value) + '. Epoch Scores:')
             for task in tasks:
@@ -170,6 +171,7 @@ class Explorer(mp.Process):
         copyfile(top_checkpoint_path, "bestmodels/model_epoch-{:03d}.pth".format(self.epoch.value))
 
     def exportBestModelParameters(self, top_checkpoint_path, task):
+        print("Explorer export best model parameters")
         checkpoint = torch.load(top_checkpoint_path)
         with open('best_parameters.txt', 'a+') as f:
             f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(task['id']) +
@@ -178,6 +180,7 @@ class Explorer(mp.Process):
                 f.write("\n" + str(checkpoint['training_params'][i]) + str(checkpoint['scores'][i]))
 
     def saveModelParameters(self, tasks):
+        print("Explorer save model parameters")
         temp_dict = dict()
         for task in tasks:
             checkpoint = torch.load("checkpoints/task-{:03d}.pth".format(task['id']))

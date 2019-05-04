@@ -102,12 +102,12 @@ class VAE_Trainer:
         num_iterations = num_subepochs * dataset_size
         while iteration < num_iterations:
             for i, x in enumerate(train_loader):
-                if iteration % 1000000 == 0:
+                if iteration % 500000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
-                if iteration % 100 != 0:
-                    iteration += x.size(0)
-                    continue
+                #if iteration % 100 != 0:
+                    #iteration += x.size(0)
+                    #continue
                 self.model.train()
                 self.optimizer.zero_grad()
                 #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
@@ -160,6 +160,7 @@ class VAE_Trainer:
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
+        print(self.task_id, "Finished reconstrution + active units")
         mig_score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
         mig_score = mig_score.to('cpu').numpy()
         final_score = mig_score + 0.2 * (1 - accuracy * 100)
