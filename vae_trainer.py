@@ -44,7 +44,7 @@ class VAE_Trainer:
                           optim_state_dict=self.optimizer.state_dict(),
                           batch_size=self.batch_size,
                           training_params=self.training_params,
-                          scores = self.scores)
+                          scores=self.scores)
         torch.save(checkpoint, checkpoint_path)
         print(self.task_id, "finished saving checkpoint")
 
@@ -105,9 +105,9 @@ class VAE_Trainer:
                 if iteration % 1000000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
-                #if iteration % 10 != 0:
-                 #   iteration += x.size(0)
-                  #  continue
+                if iteration % 100 != 0:
+                    iteration += x.size(0)
+                    continue
                 self.model.train()
                 self.optimizer.zero_grad()
                 #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
@@ -168,9 +168,9 @@ class VAE_Trainer:
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
         self.update_scores(epoch=epoch, final_score=final_score, mig_score=mig_score, accuracy=accuracy,
-                           elbo=self.elbo_running_mean, active_units=active_units, n_active=n_active)
+                           elbo=self.elbo_running_mean.val, active_units=active_units, n_active=n_active)
         if final:
-            return final_score, mig_score, accuracy, self.elbo_running_mean, active_units, n_active
+            return final_score, mig_score, accuracy, self.elbo_running_mean.val, active_units, n_active
         else:
             return final_score
 
@@ -185,7 +185,7 @@ class VAE_Trainer:
                                     pin_memory=True, sampler=randomSampler)
             loss = MSELoss()
             data_size = len(randomSampler)
-            N = len(DataLoader.dataset)
+            N = len(dataLoader.dataset)
             K = self.model.z_dim
             Z = self.model.q_dist.nparams
             qz_params = torch.Tensor(N, K, Z).to(self.device)

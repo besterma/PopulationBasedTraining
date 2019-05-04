@@ -34,15 +34,14 @@ np.random.seed(13)
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
-                 device, worker_id, hyperparameters, result_dict):
+                 device, worker_id, hyperparameters):
         super().__init__()
         self.epoch = epoch
         self.population = population
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
-        self.hyperparameters=hyperparameters
+        self.hyperparameters = hyperparameters
         self.orig_batch_size = batch_size
-        self.result_dict = result_dict
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
                 #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
@@ -108,7 +107,7 @@ class Explorer(mp.Process):
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
         self.hyper_params = hyper_params
-        self.latent_variable_plotter = LatentVariablePlotter(device_id+1, hyper_params)
+        self.latent_variable_plotter = LatentVariablePlotter(device_id+1 % torch.cuda.device_count(), hyper_params)
         self.device_id = device_id
         self.result_dict = result_dict
 
@@ -189,7 +188,7 @@ class Explorer(mp.Process):
 
         self.result_dict[self.epoch.value] = temp_dict
 
-        pickle_out = open("parameters-{:03d}.pickle".format(self.epoch.value), "wb")
+        pickle_out = open("parameters/parameters-{:03d}.pickle".format(self.epoch.value), "wb")
         pickle.dump(self.result_dict, pickle_out)
         pickle_out.close()
 
@@ -273,7 +272,8 @@ if __name__ == "__main__":
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params)
                for i in range(worker_size)]
-    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id))
+    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results))
+    print("Start workers")
     [w.start() for w in workers]
     [w.join() for w in workers]
     task = []
