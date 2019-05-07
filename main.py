@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.multiprocessing as _mp
 from worker import Worker
+from explorer import Explorer
 import time
 
 mp = _mp.get_context('spawn')
@@ -40,6 +41,11 @@ if __name__ == "__main__":
     max_epoch = args.max_epoch
     worker_size = args.worker_size
 
+
+    with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
+        dataset = torch.from_numpy(dataset_zip['imgs']).float()
+
+
     pathlib.Path('checkpoints').mkdir(exist_ok=True)
     checkpoint_str = "checkpoints/task-%03d.pth"
     print("Create mp queues")
@@ -54,7 +60,7 @@ if __name__ == "__main__":
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params)
                for i in range(worker_size)]
-    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results))
+    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results, dataset))
     print("Start workers")
     [w.start() for w in workers]
     [w.join() for w in workers]

@@ -22,16 +22,17 @@ mp = _mp.get_context('spawn')
 
 
 class Explorer(mp.Process):
-    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id, result_dict):
+    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id, result_dict, dataset):
         super().__init__()
         self.epoch = epoch
         self.population = population
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
         self.hyper_params = hyper_params
-        self.latent_variable_plotter = LatentVariablePlotter(device_id+1 % torch.cuda.device_count(), hyper_params)
+        self.latent_variable_plotter = LatentVariablePlotter(device_id+1 % torch.cuda.device_count(), hyper_params, dataset)
         self.device_id = device_id
         self.result_dict = result_dict
+        self.dataset = dataset
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
@@ -120,10 +121,11 @@ class Explorer(mp.Process):
         pickle_out.close()
 
 class LatentVariablePlotter(object):
-    def __init__(self, device_id, hyper_params):
+    def __init__(self, device_id, hyper_params, dataset):
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         self.device_id = device_id
         self.hyper_params = hyper_params
+        self.dataset = dataset
 
     def get_trainer(self):
         model = get_model(model_class=VAE,
@@ -147,9 +149,6 @@ class LatentVariablePlotter(object):
             print("Plot latents of best model")
             trainer = self.get_trainer()
             trainer.load_checkpoint(top_checkpoint_name)
-            with np.load(self.loc, encoding='latin1') as dataset_zip:
-                dataset = torch.from_numpy(dataset_zip['imgs']).float()
-            plot_vs_gt_shapes(trainer.model, dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
-            del dataset
+            plot_vs_gt_shapes(trainer.model, self.dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
             del trainer
             torch.cuda.empty_cache()

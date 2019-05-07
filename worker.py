@@ -19,7 +19,7 @@ np.random.seed(13)
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
-                 device, worker_id, hyperparameters):
+                 device, worker_id, hyperparameters, dataset):
         super().__init__()
         self.epoch = epoch
         self.population = population
@@ -27,6 +27,7 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.hyperparameters = hyperparameters
         self.orig_batch_size = batch_size
+        self.dataset = dataset
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
                 #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
@@ -61,7 +62,8 @@ class Worker(mp.Process):
                                            loss_fn=nn.CrossEntropyLoss(),
                                            batch_size=batch_size,
                                            device=self.device_id,
-                                           hyper_params=self.hyperparameters)
+                                           hyper_params=self.hyperparameters,
+                                           dataset=self.dataset)
                 trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
                 if os.path.isfile(checkpoint_path):
                     trainer.load_checkpoint(checkpoint_path)

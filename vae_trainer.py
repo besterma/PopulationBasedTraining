@@ -15,7 +15,7 @@ from disentanglement_metrics import mutual_info_metric_shapes
 class VAE_Trainer:
 
     def __init__(self, model, optimizer, loss_fn=None, train_data=None,
-                 test_data=None, batch_size=None, device=None, train_loader=None, hyper_params=None):
+                 test_data=None, batch_size=None, device=None, train_loader=None, hyper_params=None, dataset=None):
         """Note: Trainer objects don't know about the database."""
 
         self.model = model
@@ -28,6 +28,7 @@ class VAE_Trainer:
         self.training_params = dict()
         self.scores = dict()
         self.hyper_params = hyper_params
+        self.dataset = dataset
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
 
 
@@ -78,18 +79,11 @@ class VAE_Trainer:
                           elbo=elbo, active_units=active_units, n_active=n_active)
         self.scores[epoch] = score_dict
 
-
-    def get_dataset(self):
-        with np.load(self.loc, encoding='latin1') as dataset_zip:
-            dataset = torch.from_numpy(dataset_zip['imgs']).float()
-        return dataset
-
     def train(self, epoch, num_subepochs=1):
         start = time.time()
         print(self.task_id, "loading data")
-        dataset = self.get_dataset()
         with torch.cuda.device(self.device):
-            train_loader = DataLoader(dataset=dataset,
+            train_loader = DataLoader(dataset=self.dataset,
                                            batch_size=self.batch_size,
                                            shuffle=True,
                                            num_workers=0,
@@ -164,7 +158,7 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        mig_score, _, _ = mutual_info_metric_shapes(self.model, self.get_dataset(), self.device)
+        mig_score, _, _ = mutual_info_metric_shapes(self.model, self.dataset, self.device)
         mig_score = mig_score.to('cpu').numpy()
         final_score = mig_score + 0.2 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
@@ -184,8 +178,8 @@ class VAE_Trainer:
         VAR_THRESHOLD = 1e-2
         accuracy = 0
         with torch.cuda.device(self.device):
-            randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**18) # 65536
-            dataLoader = DataLoader(self.get_dataset(), batch_size=256, shuffle=False, num_workers=0,
+            randomSampler = RandomSampler(self.dataset, replacement=True, num_samples = 2**18) # 65536
+            dataLoader = DataLoader(self.dataset, batch_size=256, shuffle=False, num_workers=0,
                                     pin_memory=True, sampler=randomSampler)
             loss = MSELoss()
             data_size = len(randomSampler)
