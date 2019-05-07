@@ -12,7 +12,7 @@ def get_optimizer(model, optimizer, batch_size, hyperparameters):
     lr = np.random.choice(np.logspace(-5, 0, base=10))
     momentum = np.random.choice(np.linspace(0.1, .9999))
     if hyperparameters['batch_size']:
-        batch_size = int(np.random.choice(np.logspace(1, 5, base=2, dtype=int, num=5)))#2,4,8,16,32
+        batch_size = int(np.random.choice(np.logspace(1, 6, base=2, dtype=int, num=6)))#2,4,8,16,32,64
 
     return optimizer_class(model.parameters(), lr=lr), batch_size
 

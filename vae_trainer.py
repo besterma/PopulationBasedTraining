@@ -84,7 +84,7 @@ class VAE_Trainer:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
         return dataset
 
-    def train(self, epoch, num_subepochs=3):
+    def train(self, epoch, num_subepochs=1):
         start = time.time()
         print(self.task_id, "loading data")
         dataset = self.get_dataset()

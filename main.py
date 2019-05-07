@@ -17,11 +17,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Population Based Training")
     parser.add_argument("--device", type=str, default='cuda',
                         help="")
-    parser.add_argument("--population_size", type=int, default=10,
+    parser.add_argument("--population_size", type=int, default=24,
                         help="")
     parser.add_argument("--batch_size", type=int, default=20,
                         help="")
-    parser.add_argument("--worker_size", type=int, default=3,
+    parser.add_argument("--worker_size", type=int, default=8,
                         help="number of worker threads, should be a multiple of #graphics cards")
     parser.add_argument("--max_epoch", type=int, default=8,
                         help="")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     results = dict()
     for i in range(population_size):
         population.put(dict(id=i, score=0, mig=0, accuracy=0, elbo=0, active_units=[], n_active=0))
-    hyper_params = {'optimizer': ["lr"], "batch_size": False, "beta": True}
+    hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params)
