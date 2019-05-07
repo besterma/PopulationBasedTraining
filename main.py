@@ -57,6 +57,10 @@ class Worker(mp.Process):
                     print("Reached max_epoch in worker")
                     break
                 task = self.population.get() # should be blocking for new epoch
+                if self.epoch.value > self.max_epoch:
+                    print("Reached max_epoch in worker")
+                    self.population.put(task)
+                    break
                 print("working on task", task['id'])
                 checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
                 model = get_model(model_class=VAE,
@@ -97,6 +101,14 @@ class Worker(mp.Process):
                     torch.cuda.empty_cache()
                     self.population.put(task)
                     continue
+                except RuntimeError as err:
+                    print("Error:", err)
+                    trainer = None
+                    del trainer
+                    torch.cuda.empty_cache()
+                    self.population.put(task)
+                    continue
+
 
 
 class Explorer(mp.Process):
@@ -118,9 +130,7 @@ class Explorer(mp.Process):
         start = time.time()
         with torch.cuda.device(self.device_id):
             while True:
-                if self.epoch.value > self.max_epoch:
-                    print("Reached max_epoch in explorer")
-                    break
+
                 if self.population.empty() and self.finish_tasks.full():
                     print("One epoch took", time.time() - start, "seconds")
                     print("Exploit and explore")
@@ -155,6 +165,10 @@ class Explorer(mp.Process):
                         self.population.put(task)
                     torch.cuda.empty_cache()
                     start = time.time()
+                if self.epoch.value > self.max_epoch:
+                    print("Reached max_epoch in explorer")
+                    time.sleep(1)
+                    break
                 time.sleep(1)
 
     def exportScores(self, tasks):
@@ -249,6 +263,7 @@ if __name__ == "__main__":
                         help="")
     parser.add_argument("--start_epoch", type=int, default=0,
                         help="define start epoch when continuing training")
+    parser.add_argument("--exp_bonus", action="store_true", help="Give bonus for new number of latent variables")
 
     args = parser.parse_args()
     # mp.set_start_method("spawn")
@@ -286,11 +301,5 @@ if __name__ == "__main__":
         task.append(population.get())
     task = sorted(task, key=lambda x: x['score'], reverse=True)
     print('best score on', task[0]['id'], 'is', task[0]['score'])
-    best_model_path = "checkpoints/task-%03d.pth" % task[0]['id']
-    workers[-1].exportScores(task)
-    workers[-1].exportBestModel(best_model_path, epoch.value+1)
-    workers[-1].exportBestModelParameters(best_model_path, task[0])
-    workers[-1].latent_variable_plotter.plotLatentBestModel(best_model_path)
     end = time.time()
-
     print('Total execution time:', start-end)

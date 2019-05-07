@@ -99,8 +99,10 @@ class VAE_Trainer:
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
         iteration = 0
+        subepoch = 0
         num_iterations = num_subepochs * dataset_size
         while iteration < num_iterations:
+            print("task", self.task_id, "subepoch", subepoch)
             for i, x in enumerate(train_loader):
                 if iteration % 500000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
@@ -120,6 +122,7 @@ class VAE_Trainer:
                 self.elbo_running_mean.update(elbo.mean().item())
                 self.optimizer.step()
                 iteration += x.size(0)
+            subepoch += 1
         self.update_training_params(epoch=epoch)
         torch.cuda.empty_cache()
         print("finished training in", time.time() - start, "seconds")
@@ -181,7 +184,7 @@ class VAE_Trainer:
         VAR_THRESHOLD = 1e-2
         accuracy = 0
         with torch.cuda.device(self.device):
-            randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**16) # 65536
+            randomSampler = RandomSampler(self.get_dataset(), replacement=True, num_samples = 2**18) # 65536
             dataLoader = DataLoader(self.get_dataset(), batch_size=256, shuffle=False, num_workers=0,
                                     pin_memory=True, sampler=randomSampler)
             loss = MSELoss()
