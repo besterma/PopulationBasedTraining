@@ -58,7 +58,7 @@ if __name__ == "__main__":
     hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
-    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params)
+    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset)
                for i in range(worker_size)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results, dataset))
     print("Start workers")

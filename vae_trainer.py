@@ -91,7 +91,7 @@ class VAE_Trainer:
         print(self.task_id, "finished_loading_data")
         dataset_size = len(train_loader.dataset)
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
-              self.optimizer.param_groups[0]["lr"], "and dataset_size: ", dataset_size)
+              self.optimizer.param_groups[0]["lr"], "batch size", self.batch_size)
         iteration = 0
         subepoch = 0
         num_iterations = num_subepochs * dataset_size
