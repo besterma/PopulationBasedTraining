@@ -102,9 +102,9 @@ class VAE_Trainer:
                 if iteration % 500000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
-                if iteration % 100 != 0:
-                    iteration += x.size(0)
-                    continue
+                #if iteration % 100 != 0:
+                    #iteration += x.size(0)
+                    #continue
                 self.model.train()
                 self.optimizer.zero_grad()
                 #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
