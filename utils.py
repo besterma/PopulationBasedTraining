@@ -3,6 +3,7 @@ import torch
 import time
 import torch.optim as optim
 
+np.random.seed(13)
 
 def get_optimizer(model, optimizer, batch_size, hyperparameters):
     """This is where users choose their optimizer and define the
