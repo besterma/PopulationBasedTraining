@@ -20,9 +20,9 @@ np.random.seed(13)
 
 mp = _mp.get_context('spawn')
 
-
 class Explorer(mp.Process):
     def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id, result_dict, dataset):
+        print("Init Explorer")
         super().__init__()
         self.epoch = epoch
         self.population = population
@@ -34,10 +34,11 @@ class Explorer(mp.Process):
         self.result_dict = result_dict
         self.dataset = dataset
 
-    def run(self):
-        print("Running in loop of explorer in epoch ", self.epoch.value)
         self.result_dict['scores'] = dict()
         self.result_dict['parameters'] = dict()
+
+    def run(self):
+        print("Running in loop of explorer in epoch ", self.epoch.value)
         start = time.time()
         with torch.cuda.device(self.device_id):
             while True:
@@ -114,7 +115,7 @@ class Explorer(mp.Process):
             checkpoint_dict['scores'] = checkpoint['scores']
             temp_dict[task['id']] = checkpoint_dict
 
-        self.result_dict[self.epoch.value] = temp_dict
+        self.result_dict['parameters'][self.epoch.value] = temp_dict
 
         pickle_out = open("parameters/parameters-{:03d}.pickle".format(self.epoch.value), "wb")
         pickle.dump(self.result_dict, pickle_out)

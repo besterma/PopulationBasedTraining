@@ -62,7 +62,7 @@ class VAE_Trainer:
         self.scores = checkpoint["scores"]
         print(self.task_id, "finished loading checkpoint")
 
-    def update_training_params(self, epoch):
+    def save_training_params(self, epoch):
         param_dict = dict(epoch=epoch)
         optim_state_dict = self.optimizer.state_dict()
         for hyperparam_name in self.hyper_params['optimizer']:
@@ -81,6 +81,7 @@ class VAE_Trainer:
 
     def train(self, epoch, num_subepochs=1):
         start = time.time()
+        original_beta = self.model.beta
         print(self.task_id, "loading data")
         with torch.cuda.device(self.device):
             train_loader = DataLoader(dataset=self.dataset,
@@ -101,12 +102,19 @@ class VAE_Trainer:
                 if iteration % 500000 == 0:
                     print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                 #print("iteration", iteration, "of", dataset_size)
-                #if iteration % 100 != 0:
-                    #iteration += x.size(0)
-                    #continue
+                if iteration % 100 != 0:
+                    iteration += x.size(0)
+                    continue
                 self.model.train()
                 self.optimizer.zero_grad()
                 #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
+                self.anneal_beta(dataset='shapes',
+                                 vae=self.model,
+                                 batch_size=self.batch_size,
+                                 iteration=iteration,
+                                 epoch=epoch,
+                                 orig_beta=original_beta,
+                                 dataset_size=dataset_size)
                 x = x.to(device=self.device)
                 x = Variable(x)
                 obj, elbo = self.model.elbo(x, dataset_size)
@@ -117,7 +125,8 @@ class VAE_Trainer:
                 self.optimizer.step()
                 iteration += x.size(0)
             subepoch += 1
-        self.update_training_params(epoch=epoch)
+        self.save_training_params(epoch=epoch)
+        self.model.beta = original_beta
         torch.cuda.empty_cache()
         print("finished training in", time.time() - start, "seconds")
         train_loader = None
@@ -135,6 +144,17 @@ class VAE_Trainer:
 
         vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration)
 
+    def anneal_beta(self, dataset, vae, batch_size, iteration, epoch, orig_beta, dataset_size):
+        if dataset == 'shapes':
+            warmup_iter = 7 * dataset_size
+        elif dataset == 'faces':
+            warmup_iter = 2500
+
+        current_overall_iter = iteration + epoch * dataset_size
+        if current_overall_iter < warmup_iter:
+            vae.beta = min(orig_beta, orig_beta / warmup_iter * current_overall_iter)  # 0 --> 1
+        else:
+            vae.beta = orig_beta
 
     def eval(self, epoch=0, final = False):
         """

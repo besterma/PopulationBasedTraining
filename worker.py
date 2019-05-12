@@ -15,12 +15,12 @@ import lib.dist as dist
 
 mp = _mp.get_context('spawn')
 
-np.random.seed(13)
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
                  device, worker_id, hyperparameters, dataset):
         super().__init__()
+        print("Init Worker")
         self.epoch = epoch
         self.population = population
         self.finish_tasks = finish_tasks
@@ -28,6 +28,8 @@ class Worker(mp.Process):
         self.hyperparameters = hyperparameters
         self.orig_batch_size = batch_size
         self.dataset = dataset
+        self.worker_id = worker_id
+        np.random.seed(worker_id)
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
                 #self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
@@ -55,8 +57,10 @@ class Worker(mp.Process):
                                   device_id=self.device_id,
                                   prior_dist=dist.Normal(),
                                   q_dist=dist.Normal(),
-                                  hyperparameters=self.hyperparameters)
-                optimizer, batch_size = get_optimizer(model, optim.Adam, self.orig_batch_size, self.hyperparameters)
+                                  hyperparameters=self.hyperparameters,
+                                  seed=self.worker_id)
+                optimizer, batch_size = get_optimizer(model, optim.Adam,
+                                                      self.orig_batch_size, self.hyperparameters, seed=self.worker_id)
                 trainer = VAE_Trainer(model=model,
                                            optimizer=optimizer,
                                            loss_fn=nn.CrossEntropyLoss(),
@@ -69,6 +73,7 @@ class Worker(mp.Process):
                     trainer.load_checkpoint(checkpoint_path)
                 # Train
                 trainer.set_id(task['id'])
+                nr_of_errors = 0
                 try:
                     trainer.train(self.epoch.value)
                     score, mig, accuracy, elbo, active_units, n_active = trainer.eval(epoch=self.epoch.value, final=True)
@@ -83,6 +88,7 @@ class Worker(mp.Process):
                 except ValueError as err:
                     print("Encountered ValueError, restarting")
                     print("Error: ", err)
+                    nr_of_errors+=1
                     trainer = None
                     del trainer
                     torch.cuda.empty_cache()

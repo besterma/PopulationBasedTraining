@@ -11,6 +11,7 @@ mp = _mp.get_context('spawn')
 
 np.random.seed(13)
 
+torch.cuda.manual_seed_all(13)
 
 if __name__ == "__main__":
     print("Lets go!")
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results, dataset))
     print("Start workers")
     [w.start() for w in workers]
+    print("Wait for workers to finish")
     [w.join() for w in workers]
     task = []
     while not finish_tasks.empty():

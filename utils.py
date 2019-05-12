@@ -3,25 +3,25 @@ import torch
 import time
 import torch.optim as optim
 
-np.random.seed(13)
 
-def get_optimizer(model, optimizer, batch_size, hyperparameters):
+
+def get_optimizer(model, optimizer, batch_size, hyperparameters, seed=13):
     """This is where users choose their optimizer and define the
        hyperparameter space they'd like to search."""
     np.random.seed()
     optimizer_class = optimizer
-    lr = np.random.choice(np.logspace(-5, 0, base=10))
+    lr = np.random.choice(np.logspace(-5, 0, num=20, base=10))
     momentum = np.random.choice(np.linspace(0.1, .9999))
     if hyperparameters['batch_size']:
-        batch_size = int(np.random.choice(np.logspace(1, 6, base=2, dtype=int, num=6)))#2,4,8,16,32,64
+        batch_size = int(np.random.choice(np.logspace(3, 13, base=2, dtype=int, num=11))) # 8 - 8192
 
     return optimizer_class(model.parameters(), lr=lr), batch_size
 
 
-def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters):
+def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters, seed=13):
     np.random.seed()
     if hyperparameters['beta']:
-        beta = np.random.choice(range(1, 50))
+        beta = int(np.random.choice(np.logspace(1,13, base=1.5, num=12, dtype=int))) #array([  1,   2,   3,   5,   8,  13,  21,  33,  51,  80, 125, 194])
     else:
         beta = 1
 
@@ -30,7 +30,8 @@ def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyper
                         prior_dist=prior_dist,
                         q_dist=q_dist,
                         beta=beta,
-                        tcvae=True, device=device_id)
+                        tcvae=True,
+                        device=device_id)
     return model
 
 
