@@ -10,6 +10,7 @@ sys.path.append('../beta-tcvae')
 import lib.utils as utils
 import lib.datasets as dset
 from disentanglement_metrics import mutual_info_metric_shapes
+from elbo_decomposition import elbo_decomposition
 
 
 class VAE_Trainer:
@@ -74,9 +75,9 @@ class VAE_Trainer:
 
         self.training_params[epoch] = param_dict
 
-    def update_scores(self, epoch, final_score, mig_score, accuracy, elbo, active_units, n_active):
+    def update_scores(self, epoch, final_score, mig_score, accuracy, elbo, active_units, n_active, elbo_dict):
         score_dict = dict(epoch=epoch, final_score=final_score, mig=mig_score, mse=accuracy,
-                          elbo=elbo, active_units=active_units, n_active=n_active)
+                          elbo=elbo, active_units=active_units, n_active=n_active, elbo_dict=elbo_dict)
         self.scores[epoch] = score_dict
 
     def train(self, epoch, num_subepochs=1):
@@ -96,35 +97,36 @@ class VAE_Trainer:
         iteration = 0
         subepoch = 0
         num_iterations = num_subepochs * dataset_size
-        while iteration < num_iterations:
-            print("task", self.task_id, "subepoch", subepoch)
-            for i, x in enumerate(train_loader):
-                if iteration % 500000 == 0:
-                    print("task", self.task_id, "iteration", iteration, "of", dataset_size)
-                #print("iteration", iteration, "of", dataset_size)
-                #if iteration % 100 != 0:
-                    #iteration += x.size(0)
-                    #continue
-                self.model.train()
-                self.optimizer.zero_grad()
-                #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
-                self.anneal_beta(dataset='shapes',
-                                 vae=self.model,
-                                 batch_size=self.batch_size,
-                                 iteration=iteration,
-                                 epoch=epoch,
-                                 orig_beta=original_beta,
-                                 dataset_size=dataset_size)
-                x = x.to(device=self.device)
-                x = Variable(x)
-                obj, elbo = self.model.elbo(x, dataset_size)
-                if utils.isnan(obj).any():
-                    raise ValueError('NaN spotted in objective.')
-                obj.mean().mul(-1).backward()
-                self.elbo_running_mean.update(elbo.mean().item())
-                self.optimizer.step()
-                iteration += x.size(0)
-            subepoch += 1
+        with torch.cuda.device(self.device):
+            while iteration < num_iterations:
+                print("task", self.task_id, "subepoch", subepoch)
+                for i, x in enumerate(train_loader):
+                    if iteration % 500000 == 0:
+                        print("task", self.task_id, "iteration", iteration, "of", dataset_size)
+                    #print("iteration", iteration, "of", dataset_size)
+                    #if iteration % 100 != 0:
+                        #iteration += x.size(0)
+                        #continue
+                    self.model.train()
+                    self.optimizer.zero_grad()
+                    #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
+                    self.anneal_beta(dataset='shapes',
+                                     vae=self.model,
+                                     batch_size=self.batch_size,
+                                     iteration=iteration,
+                                     epoch=epoch,
+                                     orig_beta=original_beta,
+                                     dataset_size=dataset_size)
+                    x = x.to(device=self.device)
+                    x = Variable(x)
+                    obj, elbo = self.model.elbo(x, dataset_size)
+                    if utils.isnan(obj).any():
+                        raise ValueError('NaN spotted in objective.')
+                    obj.mean().mul(-1).backward()
+                    self.elbo_running_mean.update(elbo.mean().item())
+                    self.optimizer.step()
+                    iteration += x.size(0)
+                subepoch += 1
         self.save_training_params(epoch=epoch)
         self.model.beta = original_beta
         torch.cuda.empty_cache()
@@ -142,17 +144,20 @@ class VAE_Trainer:
         else:
             warmup_iter = 5000
 
-        vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration)
+        vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration) # 1 --> 0
 
     def anneal_beta(self, dataset, vae, batch_size, iteration, epoch, orig_beta, dataset_size):
         if dataset == 'shapes':
-            warmup_iter = 7 * dataset_size
+            warmup_iter_0 = 3 * dataset_size
+            warmup_iter_orig = 7 * dataset_size
         elif dataset == 'faces':
             warmup_iter = 2500
 
         current_overall_iter = iteration + epoch * dataset_size
-        if current_overall_iter < warmup_iter:
-            vae.beta = min(orig_beta, orig_beta / warmup_iter * current_overall_iter)  # 0 --> 1
+        if current_overall_iter < warmup_iter_0:
+            vae.beta = min(orig_beta, 1 / warmup_iter_0 * current_overall_iter)  # 0 --> 1
+        elif current_overall_iter < warmup_iter_orig:
+            vae.beta = min(orig_beta, orig_beta / warmup_iter_orig * current_overall_iter)  # 1 --> orig_beta
         else:
             vae.beta = orig_beta
 
@@ -180,15 +185,17 @@ class VAE_Trainer:
         print(self.task_id, "Finished reconstrution + active units")
         mig_score, _, _ = mutual_info_metric_shapes(self.model, self.dataset, self.device)
         mig_score = mig_score.to('cpu').numpy()
+        elbo_dict = self.elbo_decomp()
         final_score = mig_score + 0.2 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
               self.elbo_running_mean.val, "got MIG", mig_score, "and RL", accuracy,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
         self.update_scores(epoch=epoch, final_score=final_score, mig_score=mig_score, accuracy=accuracy,
-                           elbo=self.elbo_running_mean.val, active_units=active_units, n_active=n_active)
+                           elbo=self.elbo_running_mean.val, active_units=active_units, n_active=n_active,
+                           elbo_dict=elbo_dict)
         if final:
-            return final_score, mig_score, accuracy, self.elbo_running_mean.val, active_units, n_active
+            return final_score, mig_score, accuracy, self.elbo_running_mean.val, active_units, n_active, elbo_dict
         else:
             return final_score
 
@@ -227,3 +234,14 @@ class VAE_Trainer:
 
 
         return accuracy.to('cpu').numpy(), active_units, n_active
+
+    @torch.no_grad()
+    def elbo_decomp(self):
+        randomSampler = RandomSampler(self.dataset, replacement=True, num_samples=2 ** 18)  # 65536
+        dataLoader = DataLoader(self.dataset, batch_size=256, shuffle=False, num_workers=0,
+                                pin_memory=True, sampler=randomSampler)
+        logpx, dependence, information, dimwise_kl, analytical_cond_kl, marginal_entropies, joint_entropy = elbo_decomposition(self.model, dataLoader, self.device)
+
+        return dict(logpx=logpx, dependence=dependence, information=information, dimwise_kl=dimwise_kl,
+                    analytical_cond_kl=analytical_cond_kl, marginal_entropies=marginal_entropies,
+                    joint_entropy=joint_entropy)

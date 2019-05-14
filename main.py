@@ -29,6 +29,7 @@ if __name__ == "__main__":
                         help="")
     parser.add_argument("--start_epoch", type=int, default=0,
                         help="define start epoch when continuing training")
+    parser.add_argument("--existing_parameter_dict", type=str, default=None, help="Load existing parameter dict to properly extend")
     parser.add_argument("--exp_bonus", action="store_true", help="Give bonus for new number of latent variables")
 
     args = parser.parse_args()
@@ -53,7 +54,10 @@ if __name__ == "__main__":
     population = mp.Queue(maxsize=population_size)
     finish_tasks = mp.Queue(maxsize=population_size)
     epoch = mp.Value('i', args.start_epoch)
-    results = dict()
+    if args.existing_parameter_dict is None:
+        results = dict()
+    else:
+        results = np.load(args.existing_parameter_dict)
     for i in range(population_size):
         population.put(dict(id=i, score=0, mig=0, accuracy=0, elbo=0, active_units=[], n_active=0))
     hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}

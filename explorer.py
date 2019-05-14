@@ -34,8 +34,10 @@ class Explorer(mp.Process):
         self.result_dict = result_dict
         self.dataset = dataset
 
-        self.result_dict['scores'] = dict()
-        self.result_dict['parameters'] = dict()
+        if 'scores' not in self.result_dict:
+            self.result_dict['scores'] = dict()
+        if 'parameters' not in self.result_dict:
+            self.result_dict['parameters'] = dict()
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)

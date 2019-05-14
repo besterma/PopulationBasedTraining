@@ -76,7 +76,7 @@ class Worker(mp.Process):
                 nr_of_errors = 0
                 try:
                     trainer.train(self.epoch.value)
-                    score, mig, accuracy, elbo, active_units, n_active = trainer.eval(epoch=self.epoch.value, final=True)
+                    score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value, final=True)
                     trainer.save_checkpoint(checkpoint_path)
                     self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo, active_units=active_units, n_active=n_active))
                     trainer = None
