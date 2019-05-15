@@ -205,7 +205,7 @@ class VAE_Trainer:
         VAR_THRESHOLD = 1e-2
         accuracy = 0
         with torch.cuda.device(self.device):
-            randomSampler = RandomSampler(self.dataset, replacement=True, num_samples = 2**18) # 65536
+            randomSampler = RandomSampler(self.dataset, replacement=True, num_samples = 2**18) # 262144
             dataLoader = DataLoader(self.dataset, batch_size=256, shuffle=False, num_workers=0,
                                     pin_memory=True, sampler=randomSampler)
             loss = MSELoss()
@@ -242,6 +242,11 @@ class VAE_Trainer:
                                 pin_memory=True, sampler=randomSampler)
         logpx, dependence, information, dimwise_kl, analytical_cond_kl, marginal_entropies, joint_entropy = elbo_decomposition(self.model, dataLoader, self.device)
 
-        return dict(logpx=logpx, dependence=dependence, information=information, dimwise_kl=dimwise_kl,
-                    analytical_cond_kl=analytical_cond_kl, marginal_entropies=marginal_entropies,
-                    joint_entropy=joint_entropy)
+        return dict(logpx=logpx.to('cpu').numpy(),
+                    dependence=dependence.to('cpu').numpy(),
+                    information=information.to('cpu').numpy(),
+                    dimwise_kl=dimwise_kl.to('cpu').numpy(),
+                    analytical_cond_kl=analytical_cond_kl.to('cpu').numpy(),
+                    marginal_entropies=marginal_entropies.to('cpu').numpy(),
+                    joint_entropy=joint_entropy.to('cpu').numpy(),
+                    estimated_elbo=(logpx - analytical_cond_kl).to('cpu').numpy)
