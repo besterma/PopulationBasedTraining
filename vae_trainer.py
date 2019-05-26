@@ -249,4 +249,4 @@ class VAE_Trainer:
                     analytical_cond_kl=analytical_cond_kl.to('cpu').numpy(),
                     marginal_entropies=marginal_entropies.to('cpu').numpy(),
                     joint_entropy=joint_entropy.to('cpu').numpy(),
-                    estimated_elbo=(logpx - analytical_cond_kl).to('cpu').numpy)
+                    estimated_elbo=(logpx - analytical_cond_kl).to('cpu').numpy())
