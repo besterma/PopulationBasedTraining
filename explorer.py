@@ -57,26 +57,34 @@ class Explorer(mp.Process):
                     print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
                     print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
                     best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
-                    self.exportScores(tasks=tasks)
-                    self.exportBestModel(best_model_path)
-                    self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
-                    self.saveModelParameters(tasks=tasks)
-                    self.exportBestModelParameters(best_model_path, tasks[0])
-                    fraction = 0.2
-                    cutoff = int(np.ceil(fraction * len(tasks)))
-                    tops = tasks[:cutoff]
-                    bottoms = tasks[len(tasks) - cutoff:]
+                    try:
+                        self.exportScores(tasks=tasks)
+                        self.exportBestModel(best_model_path)
+                        self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
+                        self.saveModelParameters(tasks=tasks)
+                        self.exportBestModelParameters(best_model_path, tasks[0])
+                        fraction = 0.2
+                        cutoff = int(np.ceil(fraction * len(tasks)))
+                        tops = tasks[:cutoff]
+                        bottoms = tasks[len(tasks) - cutoff:]
+                    except RuntimeError as err:
+                        print("Runtime Error in Explorer:", err)
+                        torch.cuda.empty_cache()
+                        continue
+
                     for bottom in bottoms:
                         top = np.random.choice(tops)
                         top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                         bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
                         exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
+
                     with self.epoch.get_lock():
                         self.epoch.value += 1
                         print("New epoch: ", self.epoch.value)
                     for task in tasks:
                         print("Put task", task, "in queue")
                         self.population.put(task)
+
                     torch.cuda.empty_cache()
                     start = time.time()
                 if self.epoch.value > self.max_epoch:

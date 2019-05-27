@@ -1,5 +1,6 @@
 
 import os
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -50,31 +51,31 @@ class Worker(mp.Process):
                     self.population.put(task)
                     break
                 print("working on task", task['id'])
-                checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
-                model = get_model(model_class=VAE,
-                                  use_cuda=True,
-                                  z_dim=10,
-                                  device_id=self.device_id,
-                                  prior_dist=dist.Normal(),
-                                  q_dist=dist.Normal(),
-                                  hyperparameters=self.hyperparameters,
-                                  seed=self.worker_id)
-                optimizer, batch_size = get_optimizer(model, optim.Adam,
-                                                      self.orig_batch_size, self.hyperparameters, seed=self.worker_id)
-                trainer = VAE_Trainer(model=model,
-                                           optimizer=optimizer,
-                                           loss_fn=nn.CrossEntropyLoss(),
-                                           batch_size=batch_size,
-                                           device=self.device_id,
-                                           hyper_params=self.hyperparameters,
-                                           dataset=self.dataset)
-                trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
-                if os.path.isfile(checkpoint_path):
-                    trainer.load_checkpoint(checkpoint_path)
-                # Train
-                trainer.set_id(task['id'])
-                nr_of_errors = 0
                 try:
+                    checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
+                    model = get_model(model_class=VAE,
+                                      use_cuda=True,
+                                      z_dim=10,
+                                      device_id=self.device_id,
+                                      prior_dist=dist.Normal(),
+                                      q_dist=dist.Normal(),
+                                      hyperparameters=self.hyperparameters,
+                                      seed=self.worker_id)
+                    optimizer, batch_size = get_optimizer(model, optim.Adam,
+                                                          self.orig_batch_size, self.hyperparameters, seed=self.worker_id)
+                    trainer = VAE_Trainer(model=model,
+                                               optimizer=optimizer,
+                                               loss_fn=nn.CrossEntropyLoss(),
+                                               batch_size=batch_size,
+                                               device=self.device_id,
+                                               hyper_params=self.hyperparameters,
+                                               dataset=self.dataset)
+                    trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
+                    if os.path.isfile(checkpoint_path):
+                        trainer.load_checkpoint(checkpoint_path)
+
+                    # Train
+                    trainer.set_id(task['id'])
                     trainer.train(self.epoch.value)
                     score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value, final=True)
                     trainer.save_checkpoint(checkpoint_path)
@@ -88,16 +89,11 @@ class Worker(mp.Process):
                 except ValueError as err:
                     print("Encountered ValueError, restarting")
                     print("Error: ", err)
-                    nr_of_errors+=1
-                    trainer = None
-                    del trainer
-                    torch.cuda.empty_cache()
-                    self.population.put(task)
-                    continue
                 except RuntimeError as err:
                     print("Error:", err)
+                finally:
                     trainer = None
                     del trainer
                     torch.cuda.empty_cache()
                     self.population.put(task)
-                    continue
+                    time.sleep(10)
