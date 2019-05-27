@@ -88,12 +88,17 @@ class Worker(mp.Process):
                     break
                 except ValueError as err:
                     print("Encountered ValueError, restarting")
-                    print("Error: ", err)
-                except RuntimeError as err:
-                    print("Error:", err)
-                finally:
                     trainer = None
                     del trainer
                     torch.cuda.empty_cache()
                     self.population.put(task)
                     time.sleep(10)
+                except RuntimeError as err:
+                    print("Runtime Error:", err)
+                    trainer = None
+                    del trainer
+                    torch.cuda.empty_cache()
+                    self.population.put(task)
+                    time.sleep(10)
+
+                torch.cuda.empty_cache()
