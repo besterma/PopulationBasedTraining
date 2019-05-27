@@ -47,7 +47,6 @@ if __name__ == "__main__":
     with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
         dataset = torch.from_numpy(dataset_zip['imgs']).float()
 
-    dataset.share_memory()
 
 
     pathlib.Path('checkpoints').mkdir(exist_ok=True)
