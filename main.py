@@ -29,8 +29,10 @@ if __name__ == "__main__":
                         help="")
     parser.add_argument("--start_epoch", type=int, default=0,
                         help="define start epoch when continuing training")
-    parser.add_argument("--existing_parameter_dict", type=str, default=None, help="Load existing parameter dict to properly extend")
-    parser.add_argument("--exp_bonus", action="store_true", help="Give bonus for new number of latent variables")
+    parser.add_argument("--existing_parameter_dict", type=str, default=None,
+                        help="Load existing parameter dict to properly extend")
+    parser.add_argument("--exp_bonus", action="store_true",
+                        help="Give bonus for new number of latent variables")
 
     args = parser.parse_args()
     # mp.set_start_method("spawn")

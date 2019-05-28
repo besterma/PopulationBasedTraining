@@ -186,7 +186,7 @@ class VAE_Trainer:
         mig_score, _, _ = mutual_info_metric_shapes(self.model, self.dataset, self.device)
         mig_score = mig_score.to('cpu').numpy()
         elbo_dict = self.elbo_decomp()
-        final_score = mig_score + 0.7 * (1 - accuracy * 100)
+        final_score = mig_score + 0.35 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
               self.elbo_running_mean.val, "got MIG", mig_score, "and RL", accuracy,
               "final score:", final_score)
