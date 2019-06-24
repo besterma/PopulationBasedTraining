@@ -54,7 +54,7 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
             param_group[hyperparam_name] *= perturb
     if hyper_params['batch_size']:
         perturb = np.random.choice(perturb_factors)
-        batch_size = int(np.ceil(perturb * batch_size))
+        batch_size = int(np.minimum(np.ceil(perturb * batch_size), 2048))
     if hyper_params['beta']:
         perturb = np.random.choice(perturb_factors)
         beta = int(np.ceil(perturb * hyperparam_state_dict['beta']))
