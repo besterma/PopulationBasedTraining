@@ -110,13 +110,13 @@ class VAE_Trainer:
                     self.model.train()
                     self.optimizer.zero_grad()
                     #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
-                    self.anneal_beta(dataset='shapes',
-                                     vae=self.model,
-                                     batch_size=self.batch_size,
-                                     iteration=iteration,
-                                     epoch=epoch,
-                                     orig_beta=original_beta,
-                                     dataset_size=dataset_size)
+                    # self.anneal_beta(dataset='shapes',
+                    #                  vae=self.model,
+                    #                  batch_size=self.batch_size,
+                    #                  iteration=iteration,
+                    #                  epoch=epoch,
+                    #                  orig_beta=original_beta,
+                    #                  dataset_size=dataset_size)
                     x = x.to(device=self.device)
                     x = Variable(x)
                     obj, elbo = self.model.elbo(x, dataset_size)
