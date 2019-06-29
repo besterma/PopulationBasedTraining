@@ -10,7 +10,7 @@ def get_optimizer(model, optimizer, batch_size, hyperparameters, seed=13):
        hyperparameter space they'd like to search."""
     np.random.seed()
     optimizer_class = optimizer
-    lr = np.random.choice(np.logspace(-5, 0, num=20, base=10))
+    lr = np.random.choice(np.logspace(-5, 0, num=30, base=10))
     # momentum = np.random.choice(np.linspace(0.1, .9999))
     if hyperparameters['batch_size']:
         batch_size = int(np.random.choice(np.logspace(3, 11, base=2, dtype=int, num=9))) # 8 - 2048
@@ -21,7 +21,7 @@ def get_optimizer(model, optimizer, batch_size, hyperparameters, seed=13):
 def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters, seed=13):
     np.random.seed()
     if hyperparameters['beta']:
-        beta = int(np.random.choice(np.logspace(1,13, base=1.5, num=12, dtype=int))) #array([  1,   2,   3,   5,   8,  13,  21,  33,  51,  80, 125, 194])
+        beta = int(np.random.choice(np.logspace(1,15,base=1.5, num=24, dtype=int)[1:])) #[1:] because else we would have 1 double
     else:
         beta = 1
 
