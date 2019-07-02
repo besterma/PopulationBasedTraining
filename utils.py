@@ -31,6 +31,7 @@ def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyper
                         q_dist=q_dist,
                         beta=beta,
                         tcvae=True,
+                        conv=True,
                         device=device_id)
     return model
 

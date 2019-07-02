@@ -81,4 +81,4 @@ if __name__ == "__main__":
     task = sorted(task, key=lambda x: x['score'], reverse=True)
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     end = time.time()
-    print('Total execution time:', start-end)
+    print('Total execution time:', end-start)
