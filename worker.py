@@ -84,15 +84,28 @@ class Worker(mp.Process):
                     del trainer
                     torch.cuda.empty_cache()
                     print("Worker finished one loop")
+
                 except KeyboardInterrupt:
                     break
+
                 except ValueError as err:
                     print("Encountered ValueError, restarting")
                     trainer = None
+                    nr_value_errors = task.get('nr_value_errors', 0)
+                    nr_value_errors += 1
+                    if nr_value_errors >= 10:
+                        score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(
+                            epoch=self.epoch.value, final=True)
+                        self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo,
+                                                   active_units=active_units, n_active=n_active))
+                        print(task['id'], "encountered too many ValueErrors, gave up")
+                    else:
+                        task["nr_value_errors"] = nr_value_errors
+                        self.population.put(task)
+                        time.sleep(10)
                     del trainer
                     torch.cuda.empty_cache()
-                    self.population.put(task)
-                    time.sleep(10)
+
                 except RuntimeError as err:
                     print("Runtime Error:", err)
                     trainer = None
