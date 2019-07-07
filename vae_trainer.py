@@ -9,7 +9,7 @@ import sys
 sys.path.append('../beta-tcvae')
 import lib.utils as utils
 import lib.datasets as dset
-from disentanglement_metrics import mutual_info_metric_shapes
+from disentanglement_metrics import mutual_info_metric_shapes, mutual_info_metric_shapes_reduced_y
 from elbo_decomposition import elbo_decomposition
 
 
@@ -118,7 +118,8 @@ class VAE_Trainer:
                     #                  orig_beta=original_beta,
                     #                  dataset_size=dataset_size)
                     x = x.to(device=self.device)
-                    x = Variable(x)
+                    x = \
+                        (x)
                     obj, elbo = self.model.elbo(x, dataset_size)
                     if utils.isnan(obj).any():
                         raise ValueError('NaN spotted in objective.')
@@ -183,7 +184,7 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        mig_score, _, _ = mutual_info_metric_shapes(self.model, self.dataset, self.device)
+        mig_score, _, _ = mutual_info_metric_shapes_reduced_y(self.model, self.dataset, self.device)
         mig_score = mig_score.to('cpu').numpy()
         elbo_dict = self.elbo_decomp()
         final_score = mig_score + 0.375 * (1 - accuracy * 100)
