@@ -183,10 +183,11 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        mig_score, _, _ = mutual_info_metric_shapes_reduced_scale(self.model, self.dataset, self.device)
+        reduced_mig_score, mig_score, _, _ = mutual_info_metric_shapes_reduced_scale(self.model, self.dataset, self.device)
         mig_score = mig_score.to('cpu').numpy()
+        reduced_mig_score = reduced_mig_score.to('cpu').numpy()
         elbo_dict = self.elbo_decomp()
-        final_score = mig_score + 0.375 * (1 - accuracy * 100)
+        final_score = reduced_mig_score #mig_score + 0.375 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
               self.elbo_running_mean.val, "got MIG", mig_score, "and RL", accuracy,
               "final score:", final_score)
