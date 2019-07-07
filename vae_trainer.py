@@ -118,8 +118,7 @@ class VAE_Trainer:
                     #                  orig_beta=original_beta,
                     #                  dataset_size=dataset_size)
                     x = x.to(device=self.device)
-                    x = \
-                        (x)
+                    x = Variable(x)
                     obj, elbo = self.model.elbo(x, dataset_size)
                     if utils.isnan(obj).any():
                         raise ValueError('NaN spotted in objective.')
