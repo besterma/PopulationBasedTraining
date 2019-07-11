@@ -13,7 +13,8 @@ from disentanglement_metrics import mutual_info_metric_shapes,\
                                     mutual_info_metric_shapes_reduced_y,\
                                     mutual_info_metric_shapes_reduced_scale, \
                                     mutual_info_metric_shapes_reduced_orientation, \
-                                    mutual_info_metric_shapes_reduced_y_scale
+                                    mutual_info_metric_shapes_reduced_y_scale, \
+                                    mutual_info_metric_shapes_x_only
 from elbo_decomposition import elbo_decomposition
 
 
@@ -187,7 +188,7 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        reduced_mig_score, mig_score, _, _ = mutual_info_metric_shapes_reduced_y_scale(self.model, self.dataset, self.device)
+        reduced_mig_score, mig_score, _, _ = mutual_info_metric_shapes_x_only(self.model, self.dataset, self.device)
         mig_score = mig_score.to('cpu').numpy()
         reduced_mig_score = reduced_mig_score.to('cpu').numpy()
         elbo_dict = self.elbo_decomp()
