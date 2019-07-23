@@ -25,7 +25,8 @@ from elbo_decomposition import elbo_decomposition
 class VAE_Trainer:
 
     def __init__(self, model, optimizer, loss_fn=None, train_data=None,
-                 test_data=None, batch_size=None, device=None, train_loader=None, hyper_params=None, dataset=None):
+                 test_data=None, batch_size=None, device=None, train_loader=None,
+                 hyper_params=None, dataset=None, mig_active_factors=np.array([0, 1, 2, 3])):
         """Note: Trainer objects don't know about the database."""
 
         self.model = model
@@ -40,6 +41,7 @@ class VAE_Trainer:
         self.hyper_params = hyper_params
         self.dataset = dataset
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
+        self.mig_active_factors = mig_active_factors
 
 
     def set_id(self, num):
@@ -192,7 +194,7 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        reduced_mig_score, mig_score, _, _ = advanced_mutual_info_metric_shapes(self.model, self.dataset, self.device)
+        reduced_mig_score, mig_score, original_mig_score, _, _ = advanced_mutual_info_metric_shapes(self.model, self.dataset, self.device, self.mig_active_factors)
         mig_score = mig_score.to('cpu').numpy()
         reduced_mig_score = reduced_mig_score.to('cpu').numpy()
         elbo_dict = self.elbo_decomp()

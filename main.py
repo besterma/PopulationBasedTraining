@@ -33,6 +33,9 @@ if __name__ == "__main__":
                         help="Load existing parameter dict to properly extend")
     parser.add_argument("--exp_bonus", action="store_true",
                         help="Give bonus for new number of latent variables")
+    parser.add_argument("--partial_mig", type=int, default=15,
+                        help="What parts of the mig to use")
+
 
     args = parser.parse_args()
     # mp.set_start_method("spawn")
@@ -44,6 +47,9 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     max_epoch = args.max_epoch
     worker_size = args.worker_size
+    assert 0 < args.partial_mig < 16, "partial mig outside range"
+    mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(args.partial_mig))]
+    mig_active_factors = [x for x in range(4) if mig_active_factors_binary[x] == 1]
 
 
     with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
