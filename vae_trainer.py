@@ -201,10 +201,10 @@ class VAE_Trainer:
         elbo_dict = self.elbo_decomp()
         final_score = reduced_new_mig_score #mig_score + 0.375 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              self.elbo_running_mean.val, "got MIG", mig_score, "and RL", accuracy,
+              self.elbo_running_mean.val, "got MIG", new_mig_score, "and RL", accuracy,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
-        self.update_scores(epoch=epoch, final_score=final_score, mig_score=mig_score, new_mig_score=new_mig_score,
+        self.update_scores(epoch=epoch, final_score=final_score, mig_score=original_mig_score, new_mig_score=new_mig_score,
                            accuracy=accuracy, elbo=self.elbo_running_mean.val, active_units=active_units,
                            n_active=n_active, elbo_dict=elbo_dict)
         if final:
