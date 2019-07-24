@@ -148,11 +148,11 @@ class LatentVariablePlotter(object):
                           hyperparameters=self.hyper_params)
         optimizer, _ = get_optimizer(model, optim.Adam, 16, self.hyper_params)
         trainer = VAE_Trainer(model=model,
-                                   optimizer=optimizer,
-                                   loss_fn=nn.CrossEntropyLoss(),
-                                   batch_size=16,
-                                   device=self.device_id,
-                                   hyper_params=self.hyper_params)
+                              optimizer=optimizer,
+                              loss_fn=nn.CrossEntropyLoss(),
+                              batch_size=16,
+                              device=self.device_id,
+                              hyper_params=self.hyper_params)
         return trainer
 
     def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):

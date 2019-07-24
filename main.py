@@ -34,7 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_bonus", action="store_true",
                         help="Give bonus for new number of latent variables")
     parser.add_argument("--partial_mig", type=int, default=15,
-                        help="What parts of the mig to use")
+                        help="What parts of the mig to use in binary")
 
 
     args = parser.parse_args()
@@ -49,7 +49,8 @@ if __name__ == "__main__":
     worker_size = args.worker_size
     assert 0 < args.partial_mig < 16, "partial mig outside range"
     mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(args.partial_mig))]
-    mig_active_factors = [x for x in range(4) if mig_active_factors_binary[x] == 1]
+    mig_active_factors = np.array([x for x in range(4) if mig_active_factors_binary[x] == 1])
+    print("Using MIG Factors", mig_active_factors, "for this training")
 
 
     with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
@@ -72,7 +73,7 @@ if __name__ == "__main__":
     hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
-    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset)
+    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset, mig_active_factors)
                for i in range(worker_size)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results, dataset))
     print("Start workers")

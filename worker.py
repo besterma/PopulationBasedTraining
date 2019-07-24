@@ -19,7 +19,7 @@ mp = _mp.get_context('spawn')
 
 class Worker(mp.Process):
     def __init__(self, batch_size, epoch, max_epoch, population, finish_tasks,
-                 device, worker_id, hyperparameters, dataset):
+                 device, worker_id, hyperparameters, dataset, mig_active_factors=np.array([0,1,2,3])):
         super().__init__()
         print("Init Worker")
         self.epoch = epoch
@@ -30,6 +30,8 @@ class Worker(mp.Process):
         self.orig_batch_size = batch_size
         self.dataset = dataset
         self.worker_id = worker_id
+        self.mig_active_factors = mig_active_factors
+
         np.random.seed(worker_id)
         if (device != 'cpu'):
             if (torch.cuda.device_count() > 1):
@@ -69,7 +71,8 @@ class Worker(mp.Process):
                                                batch_size=batch_size,
                                                device=self.device_id,
                                                hyper_params=self.hyperparameters,
-                                               dataset=self.dataset)
+                                               dataset=self.dataset,
+                                               mig_active_factors=self.mig_active_factors)
                     trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
                     if os.path.isfile(checkpoint_path):
                         trainer.load_checkpoint(checkpoint_path)

@@ -86,8 +86,8 @@ class VAE_Trainer:
 
         self.training_params[epoch] = param_dict
 
-    def update_scores(self, epoch, final_score, mig_score, accuracy, elbo, active_units, n_active, elbo_dict):
-        score_dict = dict(epoch=epoch, final_score=final_score, mig=mig_score, mse=accuracy,
+    def update_scores(self, epoch, final_score, mig_score, new_mig_score, accuracy, elbo, active_units, n_active, elbo_dict):
+        score_dict = dict(epoch=epoch, final_score=final_score, mig=mig_score, new_mig=new_mig_score, mse=accuracy,
                           elbo=elbo, active_units=active_units, n_active=n_active, elbo_dict=elbo_dict)
         self.scores[epoch] = score_dict
 
@@ -194,20 +194,21 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        reduced_mig_score, mig_score, original_mig_score, _, _ = advanced_mutual_info_metric_shapes(self.model, self.dataset, self.device, self.mig_active_factors)
-        mig_score = mig_score.to('cpu').numpy()
-        reduced_mig_score = reduced_mig_score.to('cpu').numpy()
+        reduced_new_mig_score, new_mig_score, original_mig_score, _, _ = advanced_mutual_info_metric_shapes(self.model, self.dataset, self.device, self.mig_active_factors)
+        new_mig_score = new_mig_score.to('cpu').numpy()
+        original_mig_score = original_mig_score.to('cpu').numpy()
+        reduced_new_mig_score = reduced_new_mig_score.to('cpu').numpy()
         elbo_dict = self.elbo_decomp()
-        final_score = reduced_mig_score #mig_score + 0.375 * (1 - accuracy * 100)
+        final_score = reduced_new_mig_score #mig_score + 0.375 * (1 - accuracy * 100)
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
               self.elbo_running_mean.val, "got MIG", mig_score, "and RL", accuracy,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
-        self.update_scores(epoch=epoch, final_score=final_score, mig_score=mig_score, accuracy=accuracy,
-                           elbo=self.elbo_running_mean.val, active_units=active_units, n_active=n_active,
-                           elbo_dict=elbo_dict)
+        self.update_scores(epoch=epoch, final_score=final_score, mig_score=mig_score, new_mig_score=new_mig_score,
+                           accuracy=accuracy, elbo=self.elbo_running_mean.val, active_units=active_units,
+                           n_active=n_active, elbo_dict=elbo_dict)
         if final:
-            return final_score, mig_score, accuracy, self.elbo_running_mean.val, active_units, n_active, elbo_dict
+            return final_score, original_mig_score, accuracy, self.elbo_running_mean.val, active_units, n_active, elbo_dict
         else:
             return final_score
 
