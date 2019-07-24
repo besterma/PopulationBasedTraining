@@ -93,7 +93,6 @@ class Worker(mp.Process):
 
                 except ValueError as err:
                     print("Encountered ValueError, restarting")
-                    trainer = None
                     nr_value_errors = task.get('nr_value_errors', 0)
                     nr_value_errors += 1
                     if nr_value_errors >= 10:
