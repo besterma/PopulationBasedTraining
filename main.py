@@ -12,6 +12,9 @@ mp = _mp.get_context('spawn')
 np.random.seed(13)
 
 torch.cuda.manual_seed_all(13)
+torch.random.manual_seed(13)
+torch_rng_state = torch.random.get_rng_state()
+
 
 if __name__ == "__main__":
     print("Lets go!")
@@ -35,6 +38,8 @@ if __name__ == "__main__":
                         help="Give bonus for new number of latent variables")
     parser.add_argument("--partial_mig", type=int, default=15,
                         help="What parts of the mig to use in binary")
+    parser.add_argument("--num_labels", type=int, default=1000,
+                        help="How many labels to use for score")
 
 
     args = parser.parse_args()
@@ -51,6 +56,13 @@ if __name__ == "__main__":
     mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(args.partial_mig))]
     mig_active_factors = np.array([x for x in range(4) if mig_active_factors_binary[x] == 1])
     print("Using MIG Factors", mig_active_factors, "for this training")
+    print("Using", args.num_labels, "labels for mig estimation")
+    print("Population Size:", args.population_size)
+    print("Batch_size:", args.batch_size)
+    print("Worker_size:", args.worker_size)
+    print("Max_epoch", args.max_epoch)
+    print("Start_epoch", args.start_epoch)
+    print("Existing_parameter_dict", args.existing_parameter_dict)
 
 
     with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
@@ -73,7 +85,8 @@ if __name__ == "__main__":
     hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
-    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset, mig_active_factors)
+    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset,
+                      mig_active_factors, torch_rng_state, args.num_labels)
                for i in range(worker_size)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results, dataset))
     print("Start workers")
