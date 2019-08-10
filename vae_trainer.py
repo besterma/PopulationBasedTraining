@@ -18,7 +18,8 @@ from disentanglement_metrics import mutual_info_metric_shapes,\
                                     mutual_info_metric_shapes_scale_only, \
                                     mutual_info_metric_shapes_orientation_only, \
                                     mutual_info_metric_shapes_y_only, \
-                                    advanced_mutual_info_metric_shapes
+                                    advanced_mutual_info_metric_shapes, \
+                                    combined_mutual_info_metric_shapes
 from elbo_decomposition import elbo_decomposition
 
 
@@ -197,26 +198,30 @@ class VAE_Trainer:
         start = time.time()
         accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        reduced_new_mig_score, new_mig_score, original_mig_score, _, _ = advanced_mutual_info_metric_shapes(self.model,
+        new_mig_metric, mig_metric, full_mig_metric, full_new_mig_metric, _, _ = combined_mutual_info_metric_shapes(self.model,
                                                                                                             self.dataset,
                                                                                                             self.device,
                                                                                                             self.mig_active_factors,
                                                                                                             random_state=self.torch_random_state,
                                                                                                             num_labels=self.score_num_labels)
-        new_mig_score = new_mig_score.to('cpu').numpy()
-        original_mig_score = original_mig_score.to('cpu').numpy()
-        reduced_new_mig_score = reduced_new_mig_score.to('cpu').numpy()
+        new_mig_metric = new_mig_metric.to('cpu').numpy()
+        mig_metric = mig_metric.to('cpu').numpy()
+        full_mig_metric = full_mig_metric.to('cpu').numpy()
+        full_new_mig_metric = full_new_mig_metric.to('cpu').numpy()
+
+
         elbo_dict = self.elbo_decomp()
-        final_score = reduced_new_mig_score #mig_score + 0.375 * (1 - accuracy * 100)
+        final_score = (new_mig_metric + mig_metric) / 2 #mig_score + 0.375 * (1 - accuracy * 100)
+        combined_full = (full_new_mig_metric + full_mig_metric) / 2
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              self.elbo_running_mean.val, "got MIG", new_mig_score, "and RL", accuracy,
+              self.elbo_running_mean.val, "got MIG", full_mig_metric, "new MIG", full_new_mig_metric, "and RL", accuracy,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
-        self.update_scores(epoch=epoch, final_score=final_score, mig_score=original_mig_score, new_mig_score=new_mig_score,
+        self.update_scores(epoch=epoch, final_score=final_score, mig_score=full_mig_metric, new_mig_score=full_new_mig_metric,
                            accuracy=accuracy, elbo=self.elbo_running_mean.val, active_units=active_units,
                            n_active=n_active, elbo_dict=elbo_dict)
         if final:
-            return final_score, original_mig_score, accuracy, self.elbo_running_mean.val, active_units, n_active, elbo_dict
+            return final_score, combined_full, accuracy, self.elbo_running_mean.val, active_units, n_active, elbo_dict
         else:
             return final_score
 
