@@ -119,7 +119,7 @@ class VAE_Trainer:
                     if iteration % 500000 == 0:
                         print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                     #print("iteration", iteration, "of", dataset_size)
-                    #if iteration % 100 != 0:
+                    #if iteration % 10000 != 0:
                         #iteration += x.size(0)
                         #continue
                     self.model.train()
@@ -203,7 +203,8 @@ class VAE_Trainer:
                                                                                                             self.device,
                                                                                                             self.mig_active_factors,
                                                                                                             random_state=self.torch_random_state,
-                                                                                                            num_labels=self.score_num_labels)
+                                                                                                            num_labels=self.score_num_labels,
+                                                                                                            num_samples=2048)
         new_mig_metric = new_mig_metric.to('cpu').numpy()
         mig_metric = mig_metric.to('cpu').numpy()
         full_mig_metric = full_mig_metric.to('cpu').numpy()
