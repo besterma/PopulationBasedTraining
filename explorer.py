@@ -21,7 +21,8 @@ np.random.seed(13)
 mp = _mp.get_context('spawn')
 
 class Explorer(mp.Process):
-    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params, device_id, result_dict, dataset):
+    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params,
+                 device_id, result_dict, dataset, random_states):
         print("Init Explorer")
         super().__init__()
         self.epoch = epoch
@@ -38,6 +39,9 @@ class Explorer(mp.Process):
             self.result_dict['scores'] = dict()
         if 'parameters' not in self.result_dict:
             self.result_dict['parameters'] = dict()
+
+        self.set_rng_states(random_states)
+
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
@@ -130,6 +134,12 @@ class Explorer(mp.Process):
         pickle_out = open("parameters/parameters-{:03d}.pickle".format(self.epoch.value), "wb")
         pickle.dump(self.result_dict, pickle_out)
         pickle_out.close()
+
+    def set_rng_states(self, rng_states):
+        numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
+        np.random.set_state(numpy_rng_state)
+        torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
+        torch.random.set_rng_state(torch_cpu_rng_state)
 
 class LatentVariablePlotter(object):
     def __init__(self, device_id, hyper_params, dataset):
