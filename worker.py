@@ -2,6 +2,7 @@
 import os
 import time
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.multiprocessing as _mp
@@ -130,14 +131,16 @@ class Worker(mp.Process):
                 torch.cuda.empty_cache()
 
     def set_rng_states(self, rng_states):
-        numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
+        numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
         np.random.set_state(numpy_rng_state)
+        random.setstate(random_rng_state)
         torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
         torch.random.set_rng_state(torch_cpu_rng_state)
 
 
     def get_rng_states(self):
         numpy_rng_state = np.random.get_state()
+        random_rng_state = random.getstate()
         torch_cpu_rng_state = torch.random.get_rng_state()
         torch_gpu_rng_state = torch.cuda.get_rng_state()
-        return [numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state]
+        return [numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state]

@@ -1,6 +1,7 @@
 import pickle
 from shutil import copyfile
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.multiprocessing as _mp
@@ -136,8 +137,9 @@ class Explorer(mp.Process):
         pickle_out.close()
 
     def set_rng_states(self, rng_states):
-        numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
+        numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
         np.random.set_state(numpy_rng_state)
+        random.setstate(random_rng_state)
         torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
         torch.random.set_rng_state(torch_cpu_rng_state)
 

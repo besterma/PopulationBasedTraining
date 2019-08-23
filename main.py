@@ -6,6 +6,7 @@ import torch.multiprocessing as _mp
 from worker import Worker
 from explorer import Explorer
 import time
+import random
 
 mp = _mp.get_context('spawn')
 
@@ -14,11 +15,13 @@ def generate_random_states():
     random_seed = np.random.randint(low=1, high=2**32-1)
     np.random.seed(random_seed)
     numpy_rng_state = np.random.get_state()
+    random.seed(random_seed)
+    random_rng_state = random.getstate()
     torch.cuda.manual_seed(random_seed)
     torch.random.manual_seed(random_seed)
     torch_cpu_rng_state = torch.random.get_rng_state()
     torch_gpu_rng_state = torch.cuda.get_rng_state()
-    return [numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state]
+    return [numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state]
 
 
 def init_argparser():
@@ -50,6 +53,7 @@ def init_argparser():
 
 def init_random_state(random_seed):
     np.random.seed(random_seed)
+    random.seed(random_seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.cuda.manual_seed_all(random_seed)
