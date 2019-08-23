@@ -264,7 +264,7 @@ class VAE_Trainer:
 
     @torch.no_grad()
     def elbo_decomp(self):
-        randomSampler = RandomSampler(self.dataset, replacement=True, num_samples=2 ** 18)  # 65536
+        randomSampler = RandomSampler(self.dataset, replacement=True, num_samples=2 ** 18, )  # 65536
         dataLoader = DataLoader(self.dataset, batch_size=256, shuffle=False, num_workers=0,
                                 pin_memory=True, sampler=randomSampler)
         logpx, dependence, information, dimwise_kl, analytical_cond_kl, marginal_entropies, joint_entropy = elbo_decomposition(self.model, dataLoader, self.device)

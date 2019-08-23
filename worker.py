@@ -35,6 +35,7 @@ class Worker(mp.Process):
         self.mig_active_factors = mig_active_factors
         self.torch_random_state = torch_random_state
         self.score_num_labels = score_num_labels
+        self.random_state = np.random.RandomState()
 
         np.random.seed(worker_id)
         if (device != 'cpu'):
@@ -132,14 +133,14 @@ class Worker(mp.Process):
 
     def set_rng_states(self, rng_states):
         numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
-        np.random.set_state(numpy_rng_state)
+        self.random_state.set_state(numpy_rng_state)
         random.setstate(random_rng_state)
         torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
         torch.random.set_rng_state(torch_cpu_rng_state)
 
 
     def get_rng_states(self):
-        numpy_rng_state = np.random.get_state()
+        numpy_rng_state = self.random_state.get_state()
         random_rng_state = random.getstate()
         torch_cpu_rng_state = torch.random.get_rng_state()
         torch_gpu_rng_state = torch.cuda.get_rng_state()

@@ -13,8 +13,8 @@ mp = _mp.get_context('spawn')
 
 def generate_random_states():
     random_seed = np.random.randint(low=1, high=2**32-1)
-    np.random.seed(random_seed)
-    numpy_rng_state = np.random.get_state()
+    random_state = np.random.RandomState(random_seed)
+    numpy_rng_state = random_state.get_state()
     random.seed(random_seed)
     random_rng_state = random.getstate()
     torch.cuda.manual_seed(random_seed)

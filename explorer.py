@@ -17,8 +17,6 @@ from plot_latent_vs_true import plot_vs_gt_shapes
 
 import time
 
-np.random.seed(13)
-
 mp = _mp.get_context('spawn')
 
 class Explorer(mp.Process):
@@ -35,6 +33,7 @@ class Explorer(mp.Process):
         self.device_id = device_id
         self.result_dict = result_dict
         self.dataset = dataset
+        self.random_state = np.random.RandomState()
 
         if 'scores' not in self.result_dict:
             self.result_dict['scores'] = dict()
@@ -78,7 +77,7 @@ class Explorer(mp.Process):
                         continue
 
                     for bottom in bottoms:
-                        top = np.random.choice(tops)
+                        top = self.random_state.choice(tops)
                         top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                         bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
                         exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
@@ -138,7 +137,7 @@ class Explorer(mp.Process):
 
     def set_rng_states(self, rng_states):
         numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
-        np.random.set_state(numpy_rng_state)
+        self.random_state.set_state(numpy_rng_state)
         random.setstate(random_rng_state)
         torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
         torch.random.set_rng_state(torch_cpu_rng_state)
