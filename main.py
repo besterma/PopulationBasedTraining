@@ -9,16 +9,19 @@ import time
 
 mp = _mp.get_context('spawn')
 
-np.random.seed(13)
 
-torch.cuda.manual_seed_all(13)
-torch.random.manual_seed(13)
-torch_rng_state = torch.random.get_rng_state()
+def generate_random_states():
+    random_seed = np.random.randint(low=1, high=2**32-1)
+    np.random.seed(random_seed)
+    numpy_rng_state = np.random.get_state()
+    torch.cuda.manual_seed(random_seed)
+    torch.random.manual_seed(random_seed)
+    torch_cpu_rng_state = torch.random.get_rng_state()
+    torch_gpu_rng_state = torch.cuda.get_rng_state()
+    return [numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state]
 
 
-if __name__ == "__main__":
-    print("Lets go!")
-    start = time.time()
+def init_argparser():
     parser = argparse.ArgumentParser(description="Population Based Training")
     parser.add_argument("--device", type=str, default='cuda',
                         help="")
@@ -40,9 +43,25 @@ if __name__ == "__main__":
                         help="What parts of the mig to use in binary")
     parser.add_argument("--num_labels", type=int, default=1000,
                         help="How many labels to use for score")
+    parser.add_argument("--random_seed", type=int, default=7,
+                        help="Initialize random seed")
+    return parser
 
 
+def init_random_state(random_seed):
+    np.random.seed(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.cuda.manual_seed_all(random_seed)
+    torch.random.manual_seed(random_seed)
+
+
+if __name__ == "__main__":
+    print("Lets go!")
+    start = time.time()
+    parser = init_argparser()
     args = parser.parse_args()
+
     # mp.set_start_method("spawn")
     mp = mp.get_context('forkserver')
     device = args.device
@@ -63,12 +82,15 @@ if __name__ == "__main__":
     print("Max_epoch", args.max_epoch)
     print("Start_epoch", args.start_epoch)
     print("Existing_parameter_dict", args.existing_parameter_dict)
+    print("Random_seed", args.random_seed)
 
+    random_seed = args.random_seed
+
+    init_random_state(random_seed)
+    torch_limited_labels_rng_state = torch.random.get_rng_state()
 
     with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
         dataset = torch.from_numpy(dataset_zip['imgs']).float()
-
-
 
     pathlib.Path('checkpoints').mkdir(exist_ok=True)
     checkpoint_str = "checkpoints/task-%03d.pth"
@@ -81,14 +103,17 @@ if __name__ == "__main__":
     else:
         results = np.load(args.existing_parameter_dict)
     for i in range(population_size):
-        population.put(dict(id=i, score=0, mig=0, accuracy=0, elbo=0, active_units=[], n_active=0))
+        population.put(dict(id=i, score=0, mig=0, accuracy=0,
+                            elbo=0, active_units=[], n_active=0,
+                            random_states=generate_random_states()))
     hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}
     train_data_path = test_data_path = './data'
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset,
-                      mig_active_factors, torch_rng_state, args.num_labels)
+                      mig_active_factors, torch_limited_labels_rng_state, args.num_labels)
                for i in range(worker_size)]
-    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id, results, dataset))
+    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id,
+                            results, dataset, generate_random_states()))
     print("Start workers")
     [w.start() for w in workers]
     print("Wait for workers to finish")
@@ -102,3 +127,5 @@ if __name__ == "__main__":
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     end = time.time()
     print('Total execution time:', end-start)
+
+

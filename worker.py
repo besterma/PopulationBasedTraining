@@ -57,6 +57,7 @@ class Worker(mp.Process):
                     break
                 print("working on task", task['id'])
                 try:
+                    self.set_rng_states(task["random_states"])
                     checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
                     model = get_model(model_class=VAE,
                                       use_cuda=True,
@@ -82,12 +83,16 @@ class Worker(mp.Process):
                     if os.path.isfile(checkpoint_path):
                         trainer.load_checkpoint(checkpoint_path)
 
+
+
                     # Train
                     trainer.set_id(task['id'])
                     trainer.train(self.epoch.value)
                     score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value, final=True)
                     trainer.save_checkpoint(checkpoint_path)
-                    self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo, active_units=active_units, n_active=n_active))
+                    self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy,
+                                               elbo=elbo, active_units=active_units, n_active=n_active,
+                                               random_states=self.get_rng_states()))
                     trainer = None
                     del trainer
                     torch.cuda.empty_cache()
@@ -123,3 +128,16 @@ class Worker(mp.Process):
                     time.sleep(10)
 
                 torch.cuda.empty_cache()
+
+    def set_rng_states(self, rng_states):
+        numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
+        np.random.set_state(numpy_rng_state)
+        torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
+        torch.random.set_rng_state(torch_cpu_rng_state)
+
+
+    def get_rng_states(self):
+        numpy_rng_state = np.random.get_state()
+        torch_cpu_rng_state = torch.random.get_rng_state()
+        torch_gpu_rng_state = torch.cuda.get_rng_state()
+        return [numpy_rng_state, torch_cpu_rng_state, torch_gpu_rng_state]
