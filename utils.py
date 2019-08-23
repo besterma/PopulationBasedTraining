@@ -5,23 +5,22 @@ import torch.optim as optim
 
 
 
-def get_optimizer(model, optimizer, batch_size, hyperparameters, seed=13):
+def get_optimizer(model, optimizer, batch_size, hyperparameters, random_state):
     """This is where users choose their optimizer and define the
        hyperparameter space they'd like to search."""
-    np.random.seed()
+
     optimizer_class = optimizer
-    lr = np.random.choice(np.logspace(-5, 0, num=30, base=10))
-    # momentum = np.random.choice(np.linspace(0.1, .9999))
+    lr = random_state.choice(np.logspace(-5, 0, num=30, base=10))
+    # momentum = random_state.choice(np.linspace(0.1, .9999))
     if hyperparameters['batch_size']:
-        batch_size = int(np.random.choice(np.logspace(3, 11, base=2, dtype=int, num=9))) # 8 - 2048
+        batch_size = int(random_state.choice(np.logspace(3, 11, base=2, dtype=int, num=9))) # 8 - 2048
 
     return optimizer_class(model.parameters(), lr=lr), batch_size
 
 
-def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters, seed=13):
-    np.random.seed()
+def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyperparameters, random_state):
     if hyperparameters['beta']:
-        beta = int(np.random.choice(np.logspace(1,15,base=1.5, num=24, dtype=int)[1:])) #[1:] because else we would have 1 double
+        beta = int(random_state.choice(np.logspace(1,15,base=1.5, num=24, dtype=int)[1:])) #[1:] because else we would have 1 double
     else:
         beta = 1
 
@@ -36,7 +35,7 @@ def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyper
     return model
 
 
-def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
+def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, random_state,
                         perturb_factors=(2, 1.2, 0.8, 0.5)):
     """Copy parameters from the better model and the hyperparameters
        and running averages from the corresponding optimizer."""
@@ -50,14 +49,14 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params,
     scores = checkpoint['scores']
     training_params = checkpoint['training_params']
     for hyperparam_name in hyper_params['optimizer']:
-        perturb = np.random.choice(perturb_factors)
+        perturb = random_state.choice(perturb_factors)
         for param_group in optimizer_state_dict['param_groups']:
             param_group[hyperparam_name] *= perturb
     if hyper_params['batch_size']:
-        perturb = np.random.choice(perturb_factors)
+        perturb = random_state.choice(perturb_factors)
         batch_size = int(np.minimum(np.ceil(perturb * batch_size), 2048)) #limit due to memory constraints
     if hyper_params['beta']:
-        perturb = np.random.choice(perturb_factors)
+        perturb = random_state.choice(perturb_factors)
         beta = int(np.ceil(perturb * hyperparam_state_dict['beta']))
         hyperparam_state_dict['beta'] = beta
     checkpoint = dict(model_state_dict=state_dict,

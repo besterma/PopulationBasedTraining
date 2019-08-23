@@ -29,7 +29,6 @@ class Explorer(mp.Process):
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
         self.hyper_params = hyper_params
-        self.latent_variable_plotter = LatentVariablePlotter(device_id+1 % torch.cuda.device_count(), hyper_params, dataset)
         self.device_id = device_id
         self.result_dict = result_dict
         self.dataset = dataset
@@ -41,7 +40,8 @@ class Explorer(mp.Process):
             self.result_dict['parameters'] = dict()
 
         self.set_rng_states(random_states)
-
+        self.latent_variable_plotter = LatentVariablePlotter(device_id+1 % torch.cuda.device_count(),
+                                                             hyper_params, dataset, self.random_state)
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
@@ -80,7 +80,7 @@ class Explorer(mp.Process):
                         top = self.random_state.choice(tops)
                         top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                         bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
-                        exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params)
+                        exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params, self.random_state)
 
                     with self.epoch.get_lock():
                         self.epoch.value += 1
@@ -143,11 +143,12 @@ class Explorer(mp.Process):
         torch.random.set_rng_state(torch_cpu_rng_state)
 
 class LatentVariablePlotter(object):
-    def __init__(self, device_id, hyper_params, dataset):
+    def __init__(self, device_id, hyper_params, dataset, random_state):
         self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         self.device_id = device_id
         self.hyper_params = hyper_params
         self.dataset = dataset
+        self.random_state = random_state
 
     def get_trainer(self):
         model = get_model(model_class=VAE,
@@ -156,8 +157,9 @@ class LatentVariablePlotter(object):
                           device_id=self.device_id,
                           prior_dist=dist.Normal(),
                           q_dist=dist.Normal(),
-                          hyperparameters=self.hyper_params)
-        optimizer, _ = get_optimizer(model, optim.Adam, 16, self.hyper_params)
+                          hyperparameters=self.hyper_params,
+                          random_state=self.random_state)
+        optimizer, _ = get_optimizer(model, optim.Adam, 16, self.hyper_params, self.random_state)
         trainer = VAE_Trainer(model=model,
                               optimizer=optimizer,
                               loss_fn=nn.CrossEntropyLoss(),

@@ -68,9 +68,9 @@ class Worker(mp.Process):
                                       prior_dist=dist.Normal(),
                                       q_dist=dist.Normal(),
                                       hyperparameters=self.hyperparameters,
-                                      seed=self.worker_id)
+                                      random_state=self.random_state)
                     optimizer, batch_size = get_optimizer(model, optim.Adam,
-                                                          self.orig_batch_size, self.hyperparameters, seed=self.worker_id)
+                                                          self.orig_batch_size, self.hyperparameters, self.random_state)
                     trainer = VAE_Trainer(model=model,
                                                optimizer=optimizer,
                                                loss_fn=nn.CrossEntropyLoss(),
