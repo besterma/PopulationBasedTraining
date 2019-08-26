@@ -17,4 +17,4 @@ For more information, see [the paper](https://arxiv.org/abs/1711.09846) or [blog
 - PyTorch >= 1.0.0
 
 ### Usage
-`$ python main.py --device cuda --population_size 10 --batch_size 20`
+`$ unbuffer python3 main.py --population_size 80 --worker_size 8 --max_epoch 10 --start_epoch 0 --partial_mig 15 --num_labels 100 2>&1 | tee results34_execution_4_ep_80_pop_conv_random_7.log`
