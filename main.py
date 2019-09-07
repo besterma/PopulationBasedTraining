@@ -44,7 +44,7 @@ def init_argparser():
                         help="Give bonus for new number of latent variables")
     parser.add_argument("--partial_mig", type=int, default=15,
                         help="What parts of the mig to use in binary")
-    parser.add_argument("--num_labels", type=int, default=1000,
+    parser.add_argument("--num_labels", type=int, default=None,
                         help="How many labels to use for score")
     parser.add_argument("--random_seed", type=int, default=7,
                         help="Initialize random seed")

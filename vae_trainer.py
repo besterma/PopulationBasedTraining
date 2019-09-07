@@ -9,17 +9,8 @@ import sys
 sys.path.append('../beta-tcvae')
 import lib.utils as utils
 import lib.datasets as dset
-from disentanglement_metrics import mutual_info_metric_shapes,\
-                                    mutual_info_metric_shapes_reduced_y,\
-                                    mutual_info_metric_shapes_reduced_scale, \
-                                    mutual_info_metric_shapes_reduced_orientation, \
-                                    mutual_info_metric_shapes_reduced_y_scale, \
-                                    mutual_info_metric_shapes_x_only, \
-                                    mutual_info_metric_shapes_scale_only, \
-                                    mutual_info_metric_shapes_orientation_only, \
-                                    mutual_info_metric_shapes_y_only, \
-                                    advanced_mutual_info_metric_shapes, \
-                                    combined_mutual_info_metric_shapes
+from disentanglement_metrics import metrics_shapes
+from udr_metric import udr_metric
 from elbo_decomposition import elbo_decomposition
 
 
@@ -28,7 +19,7 @@ class VAE_Trainer:
     def __init__(self, model, optimizer, loss_fn=None, train_data=None,
                  test_data=None, batch_size=None, device=None, train_loader=None,
                  hyper_params=None, dataset=None, mig_active_factors=np.array([0, 1, 2, 3]),
-                 torch_random_state=None, score_num_labels = 1000):
+                 torch_random_state=None, score_num_labels=None):
         """Note: Trainer objects don't know about the database."""
 
         self.model = model
@@ -37,7 +28,7 @@ class VAE_Trainer:
         self.batch_size = batch_size
         self.task_id = None
         self.device = device
-        self.elbo_running_mean = utils.RunningAverageMeter()
+        self.elbo_running_mean = [utils.RunningAverageMeter() for i in range(5)]
         self.training_params = dict()
         self.scores = dict()
         self.hyper_params = hyper_params
@@ -67,7 +58,7 @@ class VAE_Trainer:
 
     def load_checkpoint(self, checkpoint_path):
         print(self.task_id, "trying to load checkpoint")
-        self.elbo_running_mean = utils.RunningAverageMeter()
+        self.elbo_running_mean = [utils.RunningAverageMeter() for i in range(5)]
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
@@ -101,10 +92,10 @@ class VAE_Trainer:
         print(self.task_id, "loading data")
         with torch.cuda.device(self.device):
             train_loader = DataLoader(dataset=self.dataset,
-                                           batch_size=self.batch_size,
-                                           shuffle=True,
-                                           num_workers=0,
-                                           pin_memory=True)
+                                      batch_size=self.batch_size,
+                                      shuffle=True,
+                                      num_workers=0,
+                                      pin_memory=True)
         print(self.task_id, "finished_loading_data")
         dataset_size = len(train_loader.dataset)
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
@@ -120,25 +111,18 @@ class VAE_Trainer:
                         print("task", self.task_id, "iteration", iteration, "of", dataset_size)
                     #print("iteration", iteration, "of", dataset_size)
                     #if iteration % 10000 != 0:
-                        #iteration += x.size(0)
-                        #continue
+                    #    iteration += x.size(0)
+                    #    continue
                     self.model.train()
                     self.optimizer.zero_grad()
-                    #self.anneal_kl('shapes', self.model, iteration + epoch * dataset_size)
-                    # self.anneal_beta(dataset='shapes',
-                    #                  vae=self.model,
-                    #                  batch_size=self.batch_size,
-                    #                  iteration=iteration,
-                    #                  epoch=epoch,
-                    #                  orig_beta=original_beta,
-                    #                  dataset_size=dataset_size)
                     x = x.to(device=self.device)
                     x = Variable(x)
-                    obj, elbo = self.model.elbo(x, dataset_size)
-                    if utils.isnan(obj).any():
+                    obj = self.model.elbo(x, dataset_size)
+                    if self.model.nan_in_objective(obj):
                         raise ValueError('NaN spotted in objective.')
-                    obj.mean().mul(-1).backward()
-                    self.elbo_running_mean.update(elbo.mean().item())
+                    self.model.backward(obj)
+                    [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(5)]
+                    #self.elbo_running_mean.update(obj[0][1].mean().item())
                     self.optimizer.step()
                     iteration += x.size(0)
                 subepoch += 1
@@ -194,11 +178,10 @@ class VAE_Trainer:
         """
 
 
-        print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", self.elbo_running_mean.val)
+        print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(5)])
         start = time.time()
-        accuracy, active_units, n_active = self.reconstructionError()
         print(self.task_id, "Finished reconstrution + active units")
-        new_mig_metric, mig_metric, full_mig_metric, full_new_mig_metric, _, _ = combined_mutual_info_metric_shapes(self.model,
+        new_mig_metric, mig_metric, full_mig_metric, full_new_mig_metric, _, _ = metrics_shapes(next(self.model.children()),
                                                                                                             self.dataset,
                                                                                                             self.device,
                                                                                                             self.mig_active_factors,
@@ -210,19 +193,21 @@ class VAE_Trainer:
         full_mig_metric = full_mig_metric.to('cpu').numpy()
         full_new_mig_metric = full_new_mig_metric.to('cpu').numpy()
 
+        udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', self.batch_size, self.device)
 
-        elbo_dict = self.elbo_decomp()
-        final_score = (new_mig_metric + mig_metric) / 2 #mig_score + 0.375 * (1 - accuracy * 100)
+
+        elbo_dict = dict()
+        final_score = udr_score
         combined_full = (full_new_mig_metric + full_mig_metric) / 2
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              self.elbo_running_mean.val, "got MIG", full_mig_metric, "new MIG", full_new_mig_metric, "and RL", accuracy,
+              [self.elbo_running_mean[k].val for k in range(5)], "got MIG", full_mig_metric, "new MIG", full_new_mig_metric, "and UDR", udr_score,
               "final score:", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
         self.update_scores(epoch=epoch, final_score=final_score, mig_score=full_mig_metric, new_mig_score=full_new_mig_metric,
-                           accuracy=accuracy, elbo=self.elbo_running_mean.val, active_units=active_units,
+                           accuracy=0, elbo=[self.elbo_running_mean[k].val for k in range(5)], active_units=[],
                            n_active=n_active, elbo_dict=elbo_dict)
         if final:
-            return final_score, combined_full, accuracy, self.elbo_running_mean.val, active_units, n_active, elbo_dict
+            return final_score, combined_full, 0, [self.elbo_running_mean[k].val for k in range(5)], [], n_active, elbo_dict
         else:
             return final_score
 

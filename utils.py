@@ -13,7 +13,7 @@ def get_optimizer(model, optimizer, batch_size, hyperparameters, random_state):
     lr = random_state.choice(np.logspace(-5, 0, num=30, base=10))
     # momentum = random_state.choice(np.linspace(0.1, .9999))
     if hyperparameters['batch_size']:
-        batch_size = int(random_state.choice(np.logspace(3, 11, base=2, dtype=int, num=9))) # 8 - 2048
+        batch_size = int(random_state.choice(np.logspace(3, 10, base=2, dtype=int, num=8))) # 8 - 2048
 
     return optimizer_class(model.parameters(), lr=lr), batch_size
 
@@ -54,7 +54,7 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, 
             param_group[hyperparam_name] *= perturb
     if hyper_params['batch_size']:
         perturb = random_state.choice(perturb_factors)
-        batch_size = int(np.minimum(np.ceil(perturb * batch_size), 2048)) #limit due to memory constraints
+        batch_size = int(np.minimum(np.ceil(perturb * batch_size), 1024)) #limit due to memory constraints
     if hyper_params['beta']:
         perturb = random_state.choice(perturb_factors)
         beta = int(np.ceil(perturb * hyperparam_state_dict['beta']))

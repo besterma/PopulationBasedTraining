@@ -11,7 +11,7 @@ from utils import get_optimizer, exploit_and_explore, get_model
 
 import sys
 sys.path.append('../beta-tcvae')
-from vae_quant import VAE
+from vae_quant import VAE, UDRVAE
 import lib.dist as dist
 from plot_latent_vs_true import plot_vs_gt_shapes
 
@@ -91,11 +91,13 @@ class Explorer(mp.Process):
 
                     torch.cuda.empty_cache()
                     start = time.time()
+                else:
+                    print("Already finished:", self.finish_tasks.qsize(), "remaining:", self.population.qsize())
                 if self.epoch.value > self.max_epoch:
                     print("Reached max_epoch in explorer")
                     time.sleep(1)
                     break
-                time.sleep(1)
+                time.sleep(20)
 
     def exportScores(self, tasks):
         print("Explorer export scores")
@@ -151,7 +153,7 @@ class LatentVariablePlotter(object):
         self.random_state = random_state
 
     def get_trainer(self):
-        model = get_model(model_class=VAE,
+        model = get_model(model_class=UDRVAE,
                           use_cuda=True,
                           z_dim=10,
                           device_id=self.device_id,
@@ -173,6 +175,7 @@ class LatentVariablePlotter(object):
             print("Plot latents of best model")
             trainer = self.get_trainer()
             trainer.load_checkpoint(top_checkpoint_name)
-            plot_vs_gt_shapes(trainer.model, self.dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}.png".format(epoch, task_id), range(trainer.model.z_dim), self.device_id)
+            for i, model in enumerate(trainer.model.children()):
+                plot_vs_gt_shapes(model, self.dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}_model_{:03d}.png".format(epoch, task_id, i), range(trainer.model.z_dim), self.device_id)
             del trainer
             torch.cuda.empty_cache()
