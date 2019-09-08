@@ -81,7 +81,6 @@ class Explorer(mp.Process):
                         top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                         bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
                         exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params, self.random_state)
-
                     with self.epoch.get_lock():
                         self.epoch.value += 1
                         print("New epoch: ", self.epoch.value)

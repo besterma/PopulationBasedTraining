@@ -160,23 +160,8 @@ class VAE_Trainer:
         else:
             vae.beta = orig_beta
 
+    @torch.no_grad()
     def eval(self, epoch=0, final = False):
-        """
-        #Evaluate model on the provided validation or test set.
-        self.model.eval()
-        dataloader = tqdm.tqdm(DataLoader(self.train_data, self.batch_size, True),
-                               desc='Eval (task {})'.format(self.task_id),
-                               ncols=80, leave=True)
-        correct = 0
-        for x, y in dataloader:
-            x, y = x.to(self.device), y.to(self.device)
-            output = self.model(x)
-            pred = output.argmax(1)
-            correct += pred.eq(y).sum().item()
-        accuracy = 100. * correct / (len(dataloader) * self.batch_size)
-        return accuracy
-        """
-
 
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(5)])
         start = time.time()

@@ -86,8 +86,6 @@ class Worker(mp.Process):
                     if os.path.isfile(checkpoint_path):
                         trainer.load_checkpoint(checkpoint_path)
 
-
-
                     # Train
                     trainer.set_id(task['id'])
                     trainer.train(self.epoch.value)
@@ -96,8 +94,10 @@ class Worker(mp.Process):
                     self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy,
                                                elbo=elbo, active_units=active_units, n_active=n_active,
                                                random_states=self.get_rng_states()))
-                    trainer = None
+                    trainer.release_memory()
                     del trainer
+                    del optimizer
+
                     torch.cuda.empty_cache()
                     print("Worker", self.worker_id, "finished task", task['id'])
 
@@ -133,12 +133,13 @@ class Worker(mp.Process):
                         self.population.put(task)
                         print("Worker", self.worker_id, "put task", task['id'], 'back into population')
                         time.sleep(1)
+                    trainer.release_memory()
                     del trainer
                     torch.cuda.empty_cache()
 
                 except RuntimeError as err:
                     print("Worker", self.worker_id, "Runtime Error:", err)
-                    trainer = None
+                    trainer.release_memory()
                     del trainer
                     torch.cuda.empty_cache()
                     self.population.put(task)
