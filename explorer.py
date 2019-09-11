@@ -33,6 +33,7 @@ class Explorer(mp.Process):
         self.result_dict = result_dict
         self.dataset = dataset
         self.random_state = np.random.RandomState()
+        self.epoch_start_time = 0
 
         if 'scores' not in self.result_dict:
             self.result_dict['scores'] = dict()
@@ -45,58 +46,87 @@ class Explorer(mp.Process):
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value)
-        start = time.time()
         with torch.cuda.device(self.device_id):
+            self.epoch_start_time = time.time()
             while True:
-
-                if self.population.empty() and self.finish_tasks.full():
-                    print("One epoch took", time.time() - start, "seconds")
-                    print("Exploit and explore")
-                    time.sleep(1)   #Bug of not having all tasks in finish_tasks
-                    tasks = []
-                    while not self.finish_tasks.empty():
-                        tasks.append(self.finish_tasks.get())
-                    tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
-                    print("Total #tasks:", len(tasks))
-                    print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
-                    print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
-                    best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
-                    try:
-                        self.exportScores(tasks=tasks)
-                        self.exportBestModel(best_model_path)
-                        self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
-                        self.saveModelParameters(tasks=tasks)
-                        self.exportBestModelParameters(best_model_path, tasks[0])
-                        fraction = 0.2
-                        cutoff = int(np.ceil(fraction * len(tasks)))
-                        tops = tasks[:cutoff]
-                        bottoms = tasks[len(tasks) - cutoff:]
-                    except RuntimeError as err:
-                        print("Runtime Error in Explorer:", err)
-                        torch.cuda.empty_cache()
-                        continue
-
-                    for bottom in bottoms:
-                        top = self.random_state.choice(tops)
-                        top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
-                        bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
-                        exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params, self.random_state)
-                    with self.epoch.get_lock():
-                        self.epoch.value += 1
-                        print("New epoch: ", self.epoch.value)
-                    for task in tasks:
-                        print("Put task", task, "in queue")
-                        self.population.put(task)
-
-                    torch.cuda.empty_cache()
-                    start = time.time()
-                else:
-                    print("Already finished:", self.finish_tasks.qsize(), "remaining:", self.population.qsize())
-                if self.epoch.value > self.max_epoch:
-                    print("Reached max_epoch in explorer")
-                    time.sleep(1)
+                status = self.main_loop()
+                if status != 0:
                     break
-                time.sleep(20)
+
+    @torch.no_grad()
+    def main_loop(self):
+
+        if self.population.empty() and self.finish_tasks.full():
+            """
+            while not self.finish_tasks.empty():
+                self.population.put(self.finish_tasks.get())
+            with self.epoch.get_lock():
+                self.epoch.value += 1
+                print("New epoch: ", self.epoch.value)
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+                print("----------------------------------------------------------------------------------")
+            return 0
+            """
+            print("One epoch took", time.time() - self.epoch_start_time, "seconds")
+            print("Exploit and explore")
+            time.sleep(1)  # Bug of not having all tasks in finish_tasks
+            tasks = []
+            while not self.finish_tasks.empty():
+                tasks.append(self.finish_tasks.get())
+            tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
+            print("Total #tasks:", len(tasks))
+            print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
+            print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
+            best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
+            try:
+                self.exportScores(tasks=tasks)
+                self.exportBestModel(best_model_path)
+                self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
+                self.saveModelParameters(tasks=tasks)
+                self.exportBestModelParameters(best_model_path, tasks[0])
+                fraction = 0.2
+                cutoff = int(np.ceil(fraction * len(tasks)))
+                tops = tasks[:cutoff]
+                bottoms = tasks[len(tasks) - cutoff:]
+            except RuntimeError as err:
+                print("Runtime Error in Explorer:", err)
+                torch.cuda.empty_cache()
+                return 0
+
+            for bottom in bottoms:
+                top = self.random_state.choice(tops)
+                top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
+                bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
+                exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params, self.random_state)
+            with self.epoch.get_lock():
+                self.epoch.value += 1
+                print("New epoch: ", self.epoch.value)
+            for task in tasks:
+                score = task.get('score', -1)
+                mig = task.get('mig', -1)
+                elbo = task.get('elbo', [])
+                active_units = task.get('active_units', [])
+                n_active = task.get('n_active', -1)
+                print("Put task", task['id'], "in queue")
+                self.population.put(task)
+
+            torch.cuda.empty_cache()
+            self.epoch_start_time = time.time()
+        else:
+            print("Already finished:", self.finish_tasks.qsize(), "remaining:", self.population.qsize())
+        if self.epoch.value > self.max_epoch:
+            print("Reached max_epoch in explorer")
+            time.sleep(1)
+            return 1
+        time.sleep(20)
+        return 0
 
     def exportScores(self, tasks):
         print("Explorer export scores")
@@ -169,6 +199,7 @@ class LatentVariablePlotter(object):
                               hyper_params=self.hyper_params)
         return trainer
 
+    @torch.no_grad()
     def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
         with torch.cuda.device(self.device_id):
             print("Plot latents of best model")

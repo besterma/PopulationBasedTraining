@@ -20,11 +20,9 @@ class VAE_Trainer:
                  test_data=None, batch_size=None, device=None, train_loader=None,
                  hyper_params=None, dataset=None, mig_active_factors=np.array([0, 1, 2, 3]),
                  torch_random_state=None, score_num_labels=None):
-        """Note: Trainer objects don't know about the database."""
 
         self.model = model
         self.optimizer = optimizer
-        self.loss_fn = loss_fn
         self.batch_size = batch_size
         self.task_id = None
         self.device = device
@@ -33,17 +31,16 @@ class VAE_Trainer:
         self.scores = dict()
         self.hyper_params = hyper_params
         self.dataset = dataset
-        self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         self.mig_active_factors = mig_active_factors
         self.torch_random_state = torch_random_state
         self.score_num_labels = score_num_labels
-
 
     def set_id(self, num):
         self.task_id = num
 
     def release_memory(self):
         self.model.to_device('cpu')
+        del self.dataset
 
     def save_checkpoint(self, checkpoint_path):
         print(self.task_id, "trying to save checkpoint")
@@ -87,8 +84,10 @@ class VAE_Trainer:
         self.scores[epoch] = score_dict
 
     def train(self, epoch, num_subepochs=1):
+
+
+
         start = time.time()
-        original_beta = self.model.beta
         print(self.task_id, "loading data")
         with torch.cuda.device(self.device):
             train_loader = DataLoader(dataset=self.dataset,
@@ -100,41 +99,45 @@ class VAE_Trainer:
         dataset_size = len(train_loader.dataset)
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "batch size", self.batch_size)
-        iteration = 0
         subepoch = 0
-        num_iterations = num_subepochs * dataset_size
         with torch.cuda.device(self.device):
-            while iteration < num_iterations:
+            while subepoch < num_subepochs:
                 print("task", self.task_id, "subepoch", subepoch)
-                for i, x in enumerate(train_loader):
-                    if iteration % 500000 == 0:
-                        print("task", self.task_id, "iteration", iteration, "of", dataset_size)
-                    #print("iteration", iteration, "of", dataset_size)
-                    #if iteration % 10000 != 0:
-                    #    iteration += x.size(0)
-                    #    continue
-                    self.model.train()
-                    self.optimizer.zero_grad()
-                    x = x.to(device=self.device)
-                    x = Variable(x)
-                    obj = self.model.elbo(x, dataset_size)
-                    if self.model.nan_in_objective(obj):
-                        raise ValueError('NaN spotted in objective.')
-                    self.model.backward(obj)
-                    [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(5)]
-                    #self.elbo_running_mean.update(obj[0][1].mean().item())
-                    self.optimizer.step()
-                    iteration += x.size(0)
+                self.training_iteration( dataset_size, train_loader)
                 subepoch += 1
         self.save_training_params(epoch=epoch)
-        self.model.beta = original_beta
         torch.cuda.empty_cache()
         print("finished training in", time.time() - start, "seconds")
-        train_loader = None
         del train_loader
-        dataset = None
-        del dataset
 
+    def training_iteration(self, dataset_size, train_loader):
+        iteration = 0
+        for i, x in enumerate(train_loader):
+            iteration += x.size(0)
+
+            #if iteration % 10000 != 0:
+            #    continue
+
+            if iteration % 200000 == 0:
+                print("task", self.task_id, "iteration", iteration, "of", dataset_size)
+            # print("iteration", iteration, "of", dataset_size)
+
+            self.model.train()
+            self.optimizer.zero_grad()
+            x = x.to(device=self.device)
+            x = Variable(x)
+            obj = self.model.elbo(x, dataset_size)
+            if self.model.nan_in_objective(obj):
+                raise ValueError('NaN spotted in objective.')
+            self.model.backward(obj)
+            [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(5)]
+            self.optimizer.step()
+            for part_obj, elbo in obj:
+                del part_obj
+                del elbo
+        self.optimizer.zero_grad()
+
+    @staticmethod
     def anneal_kl(self, dataset, vae, iteration):
         if dataset == 'shapes':
             warmup_iter = 7000
@@ -145,6 +148,7 @@ class VAE_Trainer:
 
         vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration) # 1 --> 0
 
+    @staticmethod
     def anneal_beta(self, dataset, vae, batch_size, iteration, epoch, orig_beta, dataset_size):
         if dataset == 'shapes':
             warmup_iter_0 = 3 * dataset_size
@@ -161,25 +165,19 @@ class VAE_Trainer:
             vae.beta = orig_beta
 
     @torch.no_grad()
-    def eval(self, epoch=0, final = False):
-
+    def eval(self, epoch=0, final=False):
+        self.model.eval()
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(5)])
         start = time.time()
-        print(self.task_id, "Finished reconstrution + active units")
         new_mig_metric, mig_metric, full_mig_metric, full_new_mig_metric, _, _ = metrics_shapes(next(self.model.children()),
-                                                                                                            self.dataset,
-                                                                                                            self.device,
-                                                                                                            self.mig_active_factors,
-                                                                                                            random_state=self.torch_random_state,
-                                                                                                            num_labels=self.score_num_labels,
-                                                                                                            num_samples=2048)
-        new_mig_metric = new_mig_metric.to('cpu').numpy()
-        mig_metric = mig_metric.to('cpu').numpy()
-        full_mig_metric = full_mig_metric.to('cpu').numpy()
-        full_new_mig_metric = full_new_mig_metric.to('cpu').numpy()
+                                                                                                self.dataset,
+                                                                                                self.device,
+                                                                                                self.mig_active_factors,
+                                                                                                random_state=self.torch_random_state,
+                                                                                                num_labels=self.score_num_labels,
+                                                                                                num_samples=2048)
 
         udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', self.batch_size, self.device)
-
 
         elbo_dict = dict()
         final_score = udr_score
@@ -195,7 +193,6 @@ class VAE_Trainer:
             return final_score, combined_full, 0, [self.elbo_running_mean[k].val for k in range(5)], [], n_active, elbo_dict
         else:
             return final_score
-
 
     @torch.no_grad()
     def reconstructionError(self, num_samples = 2048):

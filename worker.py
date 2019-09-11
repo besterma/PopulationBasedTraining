@@ -48,105 +48,115 @@ class Worker(mp.Process):
     def run(self):
         with torch.cuda.device(self.device_id):
             while True:
-                print("Worker", self.worker_id, "Running in loop of worker in epoch ", self.epoch.value, "on gpu", self.device_id)
-                print(self.population.qsize(), "tasks left until new epoch")
-                if self.epoch.value > self.max_epoch:
-                    print("Worker", self.worker_id, "Reached max_epoch in worker")
+                status = self.main_loop()
+                if status != 0:
                     break
-                task = self.population.get() # should be blocking for new epoch
-                if self.epoch.value > self.max_epoch:
-                    print("Worker", self.worker_id, "Reached max_epoch in worker")
-                    self.population.put(task)
-                    break
-                print("Worker", self.worker_id, "working on task", task['id'])
+
+    def main_loop(self):
+        print("Worker", self.worker_id, "Running in loop of worker in epoch ", self.epoch.value, "on gpu",
+              self.device_id)
+        print(self.population.qsize(), "tasks left until new epoch")
+        if self.epoch.value > self.max_epoch:
+            print("Worker", self.worker_id, "Reached max_epoch in worker")
+            return 1
+        task = self.population.get()  # should be blocking for new epoch
+        if self.epoch.value > self.max_epoch:
+            print("Worker", self.worker_id, "Reached max_epoch in worker")
+            self.population.put(task)
+            return 1
+        print("Worker", self.worker_id, "working on task", task['id'])
+        try:
+            self.set_rng_states(task["random_states"])
+            checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
+            model = get_model(model_class=UDRVAE,
+                              use_cuda=True,
+                              z_dim=10,
+                              device_id=self.device_id,
+                              prior_dist=dist.Normal(),
+                              q_dist=dist.Normal(),
+                              hyperparameters=self.hyperparameters,
+                              random_state=self.random_state)
+            optimizer, batch_size = get_optimizer(model, optim.Adam,
+                                                  self.orig_batch_size, self.hyperparameters, self.random_state)
+            trainer = VAE_Trainer(model=model,
+                                  optimizer=optimizer,
+                                  loss_fn=nn.CrossEntropyLoss(),
+                                  batch_size=batch_size,
+                                  device=self.device_id,
+                                  hyper_params=self.hyperparameters,
+                                  dataset=self.dataset,
+                                  mig_active_factors=self.mig_active_factors,
+                                  torch_random_state=self.torch_random_state,
+                                  score_num_labels=self.score_num_labels)
+            trainer.set_id(task['id'])  # double on purpose to have right id as early as possible (for logging)
+            if os.path.isfile(checkpoint_path):
+                trainer.load_checkpoint(checkpoint_path)
+
+            # Train
+            trainer.set_id(task['id'])
+            trainer.train(self.epoch.value)
+            score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value,
+                                                                                         final=True)
+            trainer.save_checkpoint(checkpoint_path)
+            self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy,
+                                       elbo=elbo, active_units=active_units, n_active=n_active,
+                                       random_states=self.get_rng_states()))
+            print("Worker", self.worker_id, "finished task", task['id'])
+            del task
+            trainer.release_memory()
+            del trainer
+            del model
+            del optimizer
+
+            torch.cuda.empty_cache()
+            return 0
+
+        except KeyboardInterrupt:
+            return -1
+
+        except ValueError as err:
+            nr_value_errors = task.get('nr_value_errors', 0)
+            nr_value_errors += 1
+
+            if nr_value_errors >= 10:
+                print("Worker", self.worker_id, "Task", task['id'], "Encountered ValueError", nr_value_errors,
+                      ", giving up, evaluating")
                 try:
-                    self.set_rng_states(task["random_states"])
-                    checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
-                    model = get_model(model_class=UDRVAE,
-                                      use_cuda=True,
-                                      z_dim=10,
-                                      device_id=self.device_id,
-                                      prior_dist=dist.Normal(),
-                                      q_dist=dist.Normal(),
-                                      hyperparameters=self.hyperparameters,
-                                      random_state=self.random_state)
-                    optimizer, batch_size = get_optimizer(model, optim.Adam,
-                                                          self.orig_batch_size, self.hyperparameters, self.random_state)
-                    trainer = VAE_Trainer(model=model,
-                                               optimizer=optimizer,
-                                               loss_fn=nn.CrossEntropyLoss(),
-                                               batch_size=batch_size,
-                                               device=self.device_id,
-                                               hyper_params=self.hyperparameters,
-                                               dataset=self.dataset,
-                                               mig_active_factors=self.mig_active_factors,
-                                               torch_random_state=self.torch_random_state,
-                                               score_num_labels=self.score_num_labels)
-                    trainer.set_id(task['id'])             # double on purpose to have right id as early as possible (for logging)
-                    if os.path.isfile(checkpoint_path):
-                        trainer.load_checkpoint(checkpoint_path)
+                    score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(
+                        epoch=self.epoch.value, final=True)
+                except Exception:
+                    score = task.get('score', -1)
+                    mig = task.get('mig', 0)
+                    accuracy = task.get('accuracy', 0)
+                    elbo = task.get('elbo', 0)
+                    active_units = task.get('active_units', [])
+                    n_active = task.get('n_active', 0)
+                random_states = task.get('random_states', [])
+                trainer.save_checkpoint(checkpoint_path)
+                self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo,
+                                           active_units=active_units, n_active=n_active,
+                                           random_states=random_states))
+                print(task['id'], "with too many ValueErrors finished")
+            else:
+                print("Worker", self.worker_id, "Task", task['id'], "Encountered ValueError", nr_value_errors,
+                      ", restarting")
+                task["nr_value_errors"] = nr_value_errors
+                task['random_states'] = self.get_rng_states()
+                self.population.put(task)
 
-                    # Train
-                    trainer.set_id(task['id'])
-                    trainer.train(self.epoch.value)
-                    score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value, final=True)
-                    trainer.save_checkpoint(checkpoint_path)
-                    self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy,
-                                               elbo=elbo, active_units=active_units, n_active=n_active,
-                                               random_states=self.get_rng_states()))
-                    trainer.release_memory()
-                    del trainer
-                    del optimizer
+                print("Worker", self.worker_id, "put task", task['id'], 'back into population')
+            trainer.release_memory()
+            torch.cuda.empty_cache()
+            return 0
 
-                    torch.cuda.empty_cache()
-                    print("Worker", self.worker_id, "finished task", task['id'])
-
-                except KeyboardInterrupt:
-                    break
-
-                except ValueError as err:
-                    nr_value_errors = task.get('nr_value_errors', 0)
-                    nr_value_errors += 1
-
-                    if nr_value_errors >= 10:
-                        print("Worker", self.worker_id, "Task", task['id'], "Encountered ValueError", nr_value_errors,
-                              ", giving up, evaluating")
-                        try:
-                            score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(
-                                epoch=self.epoch.value, final=True)
-                        except Exception:
-                            score = task.get('score', -1)
-                            mig = task.get('mig', 0)
-                            accuracy = task.get('accuracy', 0)
-                            elbo = task.get('elbo', 0)
-                            active_units = task.get('active_units', [])
-                            n_active = task.get('n_active', 0)
-
-                        trainer.save_checkpoint(checkpoint_path)
-                        self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo,
-                                                   active_units=active_units, n_active=n_active))
-                        print(task['id'], "with too many ValueErrors finished")
-                    else:
-                        print("Worker", self.worker_id, "Task", task['id'], "Encountered ValueError", nr_value_errors,
-                              ", restarting")
-                        task["nr_value_errors"] = nr_value_errors
-                        self.population.put(task)
-                        print("Worker", self.worker_id, "put task", task['id'], 'back into population')
-                        time.sleep(1)
-                    trainer.release_memory()
-                    del trainer
-                    torch.cuda.empty_cache()
-
-                except RuntimeError as err:
-                    print("Worker", self.worker_id, "Runtime Error:", err)
-                    trainer.release_memory()
-                    del trainer
-                    torch.cuda.empty_cache()
-                    self.population.put(task)
-                    print("Worker", self.worker_id, "put task", task['id'], 'back into population')
-                    time.sleep(10)
-
-                torch.cuda.empty_cache()
+        except RuntimeError as err:
+            print("Worker", self.worker_id, "Runtime Error:", err)
+            trainer.release_memory()
+            torch.cuda.empty_cache()
+            self.population.put(task)
+            print("Worker", self.worker_id, "put task", task['id'], 'back into population')
+            time.sleep(10)
+            return 0
 
     def set_rng_states(self, rng_states):
         numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states

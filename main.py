@@ -45,7 +45,7 @@ def init_argparser():
     parser.add_argument("--partial_mig", type=int, default=15,
                         help="What parts of the mig to use in binary")
     parser.add_argument("--num_labels", type=int, default=None,
-                        help="How many labels to use for score")
+                        help="How many labels to use for reduced sample score")
     parser.add_argument("--random_seed", type=int, default=7,
                         help="Initialize random seed")
     return parser
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     if args.existing_parameter_dict is None:
         results = dict()
     else:
-        results = np.load(args.existing_parameter_dict)
+        results = np.load(args.existing_parameter_dict, allow_pickle=True)
     for i in range(population_size):
         population.put(dict(id=i, score=0, mig=0, accuracy=0,
                             elbo=0, active_units=[], n_active=0,
