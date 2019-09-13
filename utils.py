@@ -41,7 +41,7 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, 
        and running averages from the corresponding optimizer."""
     # Copy model parameters
     print("Running function exploit_and_explore")
-    checkpoint = torch.load(top_checkpoint_path)
+    checkpoint = torch.load(top_checkpoint_path, map_location=torch.device('cpu'))
     state_dict = checkpoint['model_state_dict']
     hyperparam_state_dict = checkpoint['hyperparam_state_dict']
     optimizer_state_dict = checkpoint['optim_state_dict']

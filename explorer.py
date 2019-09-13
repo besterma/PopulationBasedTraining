@@ -114,7 +114,9 @@ class Explorer(mp.Process):
                 elbo = task.get('elbo', [])
                 active_units = task.get('active_units', [])
                 n_active = task.get('n_active', -1)
-                print("Put task", task['id'], "in queue")
+                print("Put task", task['id'], "in queue with score", score,
+                      "mig", mig,
+                      "n_active", n_active)
                 self.population.put(task)
 
             torch.cuda.empty_cache()
@@ -143,7 +145,7 @@ class Explorer(mp.Process):
 
     def exportBestModelParameters(self, top_checkpoint_path, task):
         print("Explorer export best model parameters")
-        checkpoint = torch.load(top_checkpoint_path)
+        checkpoint = torch.load(top_checkpoint_path, map_location=torch.device('cpu'))
         with open('best_parameters.txt', 'a+') as f:
             f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(task['id']) +
                     " achieved with following parameters:")
@@ -154,7 +156,7 @@ class Explorer(mp.Process):
         print("Explorer save model parameters")
         temp_dict = dict()
         for task in tasks:
-            checkpoint = torch.load("checkpoints/task-{:03d}.pth".format(task['id']))
+            checkpoint = torch.load("checkpoints/task-{:03d}.pth".format(task['id']), map_location=torch.device('cpu'))
             checkpoint_dict = dict()
             checkpoint_dict['training_params'] = checkpoint['training_params']
             checkpoint_dict['scores'] = checkpoint['scores']

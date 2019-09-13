@@ -7,6 +7,7 @@ from worker import Worker
 from explorer import Explorer
 import time
 import random
+import pickle
 
 mp = _mp.get_context('spawn')
 
@@ -105,7 +106,8 @@ if __name__ == "__main__":
     if args.existing_parameter_dict is None:
         results = dict()
     else:
-        results = np.load(args.existing_parameter_dict, allow_pickle=True)
+        with open(args.existing_parameter_dict, "rb") as pickle_in:
+            results = pickle.load(pickle_in)
     for i in range(population_size):
         population.put(dict(id=i, score=0, mig=0, accuracy=0,
                             elbo=0, active_units=[], n_active=0,

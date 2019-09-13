@@ -56,7 +56,7 @@ class VAE_Trainer:
     def load_checkpoint(self, checkpoint_path):
         print(self.task_id, "trying to load checkpoint")
         self.elbo_running_mean = [utils.RunningAverageMeter() for i in range(5)]
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device(self.device))
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.load_hyperparam_state_dict(checkpoint['hyperparam_state_dict'])
         self.model.to_device(self.device)
@@ -103,7 +103,7 @@ class VAE_Trainer:
         with torch.cuda.device(self.device):
             while subepoch < num_subepochs:
                 print("task", self.task_id, "subepoch", subepoch)
-                self.training_iteration( dataset_size, train_loader)
+                self.training_iteration(dataset_size, train_loader)
                 subepoch += 1
         self.save_training_params(epoch=epoch)
         torch.cuda.empty_cache()
