@@ -8,6 +8,7 @@ import torch.multiprocessing as _mp
 import torch.optim as optim
 from vae_trainer import VAE_Trainer
 from utils import get_optimizer, exploit_and_explore, get_model
+import os
 
 import sys
 sys.path.append('../beta-tcvae')
@@ -41,12 +42,12 @@ class Explorer(mp.Process):
             self.result_dict['parameters'] = dict()
 
         self.set_rng_states(random_states)
-        self.latent_variable_plotter = LatentVariablePlotter(device_id+1 % torch.cuda.device_count(),
-                                                             hyper_params, dataset, self.random_state)
+        self.latent_variable_plotter = LatentVariablePlotter(0, hyper_params, dataset, self.random_state)
 
     def run(self):
-        print("Running in loop of explorer in epoch ", self.epoch.value)
-        with torch.cuda.device(self.device_id):
+        print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
+        with torch.cuda.device(0):
             self.epoch_start_time = time.time()
             while True:
                 status = self.main_loop()
@@ -57,23 +58,6 @@ class Explorer(mp.Process):
     def main_loop(self):
 
         if self.population.empty() and self.finish_tasks.full():
-            """
-            while not self.finish_tasks.empty():
-                self.population.put(self.finish_tasks.get())
-            with self.epoch.get_lock():
-                self.epoch.value += 1
-                print("New epoch: ", self.epoch.value)
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-                print("----------------------------------------------------------------------------------")
-            return 0
-            """
             print("One epoch took", time.time() - self.epoch_start_time, "seconds")
             print("Exploit and explore")
             time.sleep(1)  # Bug of not having all tasks in finish_tasks
@@ -169,15 +153,16 @@ class Explorer(mp.Process):
         pickle_out.close()
 
     def set_rng_states(self, rng_states):
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
         numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
         self.random_state.set_state(numpy_rng_state)
         random.setstate(random_rng_state)
-        torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
+        torch.cuda.set_rng_state(torch_gpu_rng_state, device=0)
         torch.random.set_rng_state(torch_cpu_rng_state)
 
 class LatentVariablePlotter(object):
     def __init__(self, device_id, hyper_params, dataset, random_state):
-        self.loc = 'data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz'
         self.device_id = device_id
         self.hyper_params = hyper_params
         self.dataset = dataset

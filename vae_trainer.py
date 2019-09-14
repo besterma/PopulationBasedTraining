@@ -42,14 +42,15 @@ class VAE_Trainer:
         self.model.to_device('cpu')
         del self.dataset
 
-    def save_checkpoint(self, checkpoint_path):
+    def save_checkpoint(self, checkpoint_path, random_state):
         print(self.task_id, "trying to save checkpoint")
         checkpoint = dict(model_state_dict=self.model.state_dict(),
                           hyperparam_state_dict=self.model.get_hyperparam_state_dict(),
                           optim_state_dict=self.optimizer.state_dict(),
                           batch_size=self.batch_size,
                           training_params=self.training_params,
-                          scores=self.scores)
+                          scores=self.scores,
+                          random_state=random_state)
         torch.save(checkpoint, checkpoint_path)
         print(self.task_id, "finished saving checkpoint")
 
@@ -65,6 +66,7 @@ class VAE_Trainer:
         self.training_params = checkpoint['training_params']
         self.scores = checkpoint["scores"]
         print(self.task_id, "finished loading checkpoint")
+        return checkpoint['random_state']
 
     def save_training_params(self, epoch):
         param_dict = dict(epoch=epoch)

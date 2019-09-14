@@ -46,7 +46,8 @@ class Worker(mp.Process):
                 self.device_id = 0
 
     def run(self):
-        with torch.cuda.device(self.device_id):
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
+        with torch.cuda.device(0):
             while True:
                 status = self.main_loop()
                 if status != 0:
@@ -66,12 +67,12 @@ class Worker(mp.Process):
             return 1
         print("Worker", self.worker_id, "working on task", task['id'])
         try:
-            self.set_rng_states(task["random_states"])
             checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
+            self.set_rng_states(task["random_states"])
             model = get_model(model_class=UDRVAE,
                               use_cuda=True,
                               z_dim=10,
-                              device_id=self.device_id,
+                              device_id=0,
                               prior_dist=dist.Normal(),
                               q_dist=dist.Normal(),
                               hyperparameters=self.hyperparameters,
@@ -82,7 +83,7 @@ class Worker(mp.Process):
                                   optimizer=optimizer,
                                   loss_fn=nn.CrossEntropyLoss(),
                                   batch_size=batch_size,
-                                  device=self.device_id,
+                                  device=0,
                                   hyper_params=self.hyperparameters,
                                   dataset=self.dataset,
                                   mig_active_factors=self.mig_active_factors,
@@ -90,14 +91,15 @@ class Worker(mp.Process):
                                   score_num_labels=self.score_num_labels)
             trainer.set_id(task['id'])  # double on purpose to have right id as early as possible (for logging)
             if os.path.isfile(checkpoint_path):
-                trainer.load_checkpoint(checkpoint_path)
+                random_states = trainer.load_checkpoint(checkpoint_path)
+                self.set_rng_states(random_states)
 
             # Train
             trainer.set_id(task['id'])
             trainer.train(self.epoch.value)
             score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value,
                                                                                          final=True)
-            trainer.save_checkpoint(checkpoint_path)
+            trainer.save_checkpoint(checkpoint_path, self.get_rng_states())
             self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy,
                                        elbo=elbo, active_units=active_units, n_active=n_active,
                                        random_states=self.get_rng_states()))
@@ -132,7 +134,7 @@ class Worker(mp.Process):
                     active_units = task.get('active_units', [])
                     n_active = task.get('n_active', 0)
                 random_states = task.get('random_states', [])
-                trainer.save_checkpoint(checkpoint_path)
+                trainer.save_checkpoint(checkpoint_path, self.get_rng_states())
                 self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy, elbo=elbo,
                                            active_units=active_units, n_active=n_active,
                                            random_states=random_states))
@@ -151,7 +153,8 @@ class Worker(mp.Process):
 
         except RuntimeError as err:
             print("Worker", self.worker_id, "Runtime Error:", err)
-            trainer.release_memory()
+            if trainer is not None:
+                trainer.release_memory()
             torch.cuda.empty_cache()
             self.population.put(task)
             print("Worker", self.worker_id, "put task", task['id'], 'back into population')
@@ -159,12 +162,13 @@ class Worker(mp.Process):
             return 0
 
     def set_rng_states(self, rng_states):
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
         numpy_rng_state, random_rng_state, torch_cpu_rng_state, torch_gpu_rng_state = rng_states
         self.random_state.set_state(numpy_rng_state)
         random.setstate(random_rng_state)
-        torch.cuda.set_rng_state(torch_gpu_rng_state, device=self.device_id)
+        torch.cuda.set_rng_state(torch_gpu_rng_state, device=0)
         torch.random.set_rng_state(torch_cpu_rng_state)
-
 
     def get_rng_states(self):
         numpy_rng_state = self.random_state.get_state()
