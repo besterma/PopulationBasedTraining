@@ -8,6 +8,7 @@ from explorer import Explorer
 import time
 import random
 import pickle
+import gin
 
 mp = _mp.get_context('spawn')
 
@@ -60,36 +61,36 @@ def init_random_state(random_seed):
     torch.cuda.manual_seed_all(random_seed)
     torch.random.manual_seed(random_seed)
 
-
-if __name__ == "__main__":
+@gin.configurable()
+def pbt_main(device, population_size, batch_size, worker_size, max_epoch, start_epoch,
+             existing_parameter_dict, partial_mig, num_labels, random_seed):
     print("Lets go!")
     start = time.time()
-    parser = init_argparser()
-    args = parser.parse_args()
+
 
     # mp.set_start_method("spawn")
-    mp = mp.get_context('forkserver')
-    device = args.device
+    mp = _mp.get_context('forkserver') # Maybe doesnt work
+    device = device
     if not torch.cuda.is_available():
         device = 'cpu'
-    population_size = args.population_size
-    batch_size = args.batch_size
-    max_epoch = args.max_epoch
-    worker_size = args.worker_size
-    assert 0 < args.partial_mig < 16, "partial mig outside range"
-    mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(args.partial_mig))]
+    population_size = population_size
+    batch_size = batch_size
+    max_epoch = max_epoch
+    worker_size = worker_size
+    assert 0 < partial_mig < 16, "partial mig outside range"
+    mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(partial_mig))]
     mig_active_factors = np.array([x for x in range(4) if mig_active_factors_binary[x] == 1])
     print("Using MIG Factors", mig_active_factors, "for this training")
-    print("Using", args.num_labels, "labels for mig estimation")
-    print("Population Size:", args.population_size)
-    print("Batch_size:", args.batch_size)
-    print("Worker_size:", args.worker_size)
-    print("Max_epoch", args.max_epoch)
-    print("Start_epoch", args.start_epoch)
-    print("Existing_parameter_dict", args.existing_parameter_dict)
-    print("Random_seed", args.random_seed)
+    print("Using", num_labels, "labels for mig estimation")
+    print("Population Size:", population_size)
+    print("Batch_size:", batch_size)
+    print("Worker_size:", worker_size)
+    print("Max_epoch", max_epoch)
+    print("Start_epoch", start_epoch)
+    print("Existing_parameter_dict", existing_parameter_dict)
+    print("Random_seed", random_seed)
 
-    random_seed = args.random_seed
+    random_seed = random_seed
 
     init_random_state(random_seed)
     torch_limited_labels_rng_state = torch.random.get_rng_state()
@@ -102,11 +103,11 @@ if __name__ == "__main__":
     print("Create mp queues")
     population = mp.Queue(maxsize=population_size)
     finish_tasks = mp.Queue(maxsize=population_size)
-    epoch = mp.Value('i', args.start_epoch)
-    if args.existing_parameter_dict is None:
+    epoch = mp.Value('i', start_epoch)
+    if existing_parameter_dict is None:
         results = dict()
     else:
-        with open(args.existing_parameter_dict, "rb") as pickle_in:
+        with open(existing_parameter_dict, "rb") as pickle_in:
             results = pickle.load(pickle_in)
     for i in range(population_size):
         population.put(dict(id=i, score=0, mig=0, accuracy=0,
@@ -116,7 +117,7 @@ if __name__ == "__main__":
     train_data_path = test_data_path = './data'
     print("Create workers")
     workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset,
-                      mig_active_factors, torch_limited_labels_rng_state, args.num_labels)
+                      mig_active_factors, torch_limited_labels_rng_state, num_labels)
                for i in range(worker_size)]
     workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id,
                             results, dataset, generate_random_states()))
@@ -133,5 +134,15 @@ if __name__ == "__main__":
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     end = time.time()
     print('Total execution time:', end-start)
+
+
+
+if __name__ == "__main__":
+    parser = init_argparser()
+    args = parser.parse_args()
+    pbt_main(args.device, args.population_size, args.batch_size, args.worker_size,
+             args.max_epoch, args.start_epoch, args.existing_parameter_dict,
+             args.partial_mig, args.num_labels, args.random_seed)
+
 
 
