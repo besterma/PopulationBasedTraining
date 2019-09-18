@@ -179,7 +179,8 @@ class VAE_Trainer:
                                                                                                 num_labels=self.score_num_labels,
                                                                                                 num_samples=2048)
 
-        udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', self.batch_size, self.device)
+        udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', self.batch_size,
+                                         self.device, self.torch_random_state)
 
         elbo_dict = dict()
         final_score = udr_score
