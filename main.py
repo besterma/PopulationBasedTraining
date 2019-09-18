@@ -9,6 +9,7 @@ import time
 import random
 import pickle
 import gin
+import os
 
 mp = _mp.get_context('spawn')
 
@@ -50,6 +51,7 @@ def init_argparser():
                         help="How many labels to use for reduced sample score")
     parser.add_argument("--random_seed", type=int, default=7,
                         help="Initialize random seed")
+    parser.add_argument("--gin_config", type=str, default=None)
     return parser
 
 
@@ -62,16 +64,16 @@ def init_random_state(random_seed):
     torch.random.manual_seed(random_seed)
 
 @gin.configurable()
-def pbt_main(device, population_size, batch_size, worker_size, max_epoch, start_epoch,
-             existing_parameter_dict, partial_mig, num_labels, random_seed):
+def pbt_main(device='cpu', population_size=24, batch_size=20, worker_size=8, max_epoch=10, start_epoch=0,
+             existing_parameter_dict=None, partial_mig=15, num_labels=None, random_seed=7):
     print("Lets go!")
     start = time.time()
 
 
     # mp.set_start_method("spawn")
     mp = _mp.get_context('forkserver') # Maybe doesnt work
-    device = device
-    if not torch.cuda.is_available():
+    if not torch.cuda.is_available() and device != 'cpu':
+        print("Cuda not available, switching to cpu")
         device = 'cpu'
     population_size = population_size
     batch_size = batch_size
@@ -140,9 +142,13 @@ def pbt_main(device, population_size, batch_size, worker_size, max_epoch, start_
 if __name__ == "__main__":
     parser = init_argparser()
     args = parser.parse_args()
-    pbt_main(args.device, args.population_size, args.batch_size, args.worker_size,
-             args.max_epoch, args.start_epoch, args.existing_parameter_dict,
-             args.partial_mig, args.num_labels, args.random_seed)
-
+    if args.gin_config is not None and os.path.isfile(args.gin_config):
+        print('Using gin config from', args.gin_config)
+        gin.parse_config_file(args.gin_config)
+        pbt_main()
+    else:
+        pbt_main(args.device, args.population_size, args.batch_size, args.worker_size,
+                 args.max_epoch, args.start_epoch, args.existing_parameter_dict,
+                 args.partial_mig, args.num_labels, args.random_seed)
 
 
