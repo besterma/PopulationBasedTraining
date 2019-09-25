@@ -3,6 +3,7 @@ import pathlib
 import numpy as np
 import torch
 import torch.multiprocessing as _mp
+from torch.optim import Adam
 from worker import Worker
 from explorer import Explorer
 import time
@@ -10,8 +11,87 @@ import random
 import pickle
 import gin
 import os
+import sys
+import utils
+
+sys.path.append('../beta-tcvae')
+from vae_quant import VAE, UDRVAE
+import lib.dist as dist
 
 mp = _mp.get_context('spawn')
+
+@gin.configurable()
+def pbt_main(device='cpu', population_size=24, batch_size=20, worker_size=8, max_epoch=10, start_epoch=0,
+             existing_parameter_dict=None, partial_mig=15, num_labels=None, random_seed=7, hyper_params=None):
+    if hyper_params is None:
+        hyper_params = ['lr', 'batch_size', 'beta']
+    print("Lets go!")
+    start = time.time()
+
+    # mp.set_start_method("spawn")
+    mp = _mp.get_context('forkserver') # Maybe doesnt work
+    if not torch.cuda.is_available() and device != 'cpu':
+        print("Cuda not available, switching to cpu")
+        device = 'cpu'
+    population_size = population_size
+    batch_size = batch_size
+    max_epoch = max_epoch
+    worker_size = worker_size
+    assert 0 < partial_mig < 16, "partial mig outside range"
+    mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(partial_mig))]
+    mig_active_factors = np.array([x for x in range(4) if mig_active_factors_binary[x] == 1])
+    print("Using MIG Factors", mig_active_factors, "for this training")
+    print("Using", num_labels, "labels for mig estimation")
+    print("Population Size:", population_size)
+    print("Batch_size:", batch_size)
+    print("Worker_size:", worker_size)
+    print("Max_epoch", max_epoch)
+    print("Start_epoch", start_epoch)
+    print("Existing_parameter_dict", existing_parameter_dict)
+    print("Random_seed", random_seed)
+
+    random_seed = random_seed
+
+    init_random_state(random_seed)
+    torch_limited_labels_rng_state = torch.random.get_rng_state()
+
+    with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
+        dataset = torch.from_numpy(dataset_zip['imgs']).float()
+
+    pathlib.Path('checkpoints').mkdir(exist_ok=True)
+    checkpoint_str = "checkpoints/task-%03d.pth"
+    print("Create mp queues")
+    population = mp.Queue(maxsize=population_size)
+    finish_tasks = mp.Queue(maxsize=population_size)
+    epoch = mp.Value('i', start_epoch)
+    if existing_parameter_dict is None:
+        results = dict()
+    else:
+        with open(existing_parameter_dict, "rb") as pickle_in:
+            results = pickle.load(pickle_in)
+    for i in range(population_size):
+        population.put(dict(id=i, score=0, mig=0, accuracy=0,
+                            elbo=0, active_units=[], n_active=0,
+                            random_states=generate_random_states()))
+    train_data_path = test_data_path = './data'
+    print("Create workers")
+    workers = [Worker(population, finish_tasks, device, i, dataset, score_random_state=torch_limited_labels_rng_state, start_epoch=epoch)
+               for i in range(worker_size)]
+    workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, dataset, generate_random_states(), start_epoch=epoch))
+    print("Start workers")
+    [w.start() for w in workers]
+    print("Wait for workers to finish")
+    [w.join() for w in workers]
+    print("Workers finished")
+    task = []
+    while not finish_tasks.empty():
+        task.append(finish_tasks.get())
+    while not population.empty():
+        task.append(population.get())
+    task = sorted(task, key=lambda x: x['score'], reverse=True)
+    print('best score on', task[0]['id'], 'is', task[0]['score'])
+    end = time.time()
+    print('Total execution time:', end-start)
 
 
 def generate_random_states():
@@ -63,79 +143,13 @@ def init_random_state(random_seed):
     torch.cuda.manual_seed_all(random_seed)
     torch.random.manual_seed(random_seed)
 
-@gin.configurable()
-def pbt_main(device='cpu', population_size=24, batch_size=20, worker_size=8, max_epoch=10, start_epoch=0,
-             existing_parameter_dict=None, partial_mig=15, num_labels=None, random_seed=7):
-    print("Lets go!")
-    start = time.time()
 
-
-    # mp.set_start_method("spawn")
-    mp = _mp.get_context('forkserver') # Maybe doesnt work
-    if not torch.cuda.is_available() and device != 'cpu':
-        print("Cuda not available, switching to cpu")
-        device = 'cpu'
-    population_size = population_size
-    batch_size = batch_size
-    max_epoch = max_epoch
-    worker_size = worker_size
-    assert 0 < partial_mig < 16, "partial mig outside range"
-    mig_active_factors_binary = [int(x) for x in list('{0:04b}'.format(partial_mig))]
-    mig_active_factors = np.array([x for x in range(4) if mig_active_factors_binary[x] == 1])
-    print("Using MIG Factors", mig_active_factors, "for this training")
-    print("Using", num_labels, "labels for mig estimation")
-    print("Population Size:", population_size)
-    print("Batch_size:", batch_size)
-    print("Worker_size:", worker_size)
-    print("Max_epoch", max_epoch)
-    print("Start_epoch", start_epoch)
-    print("Existing_parameter_dict", existing_parameter_dict)
-    print("Random_seed", random_seed)
-
-    random_seed = random_seed
-
-    init_random_state(random_seed)
-    torch_limited_labels_rng_state = torch.random.get_rng_state()
-
-    with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
-        dataset = torch.from_numpy(dataset_zip['imgs']).float()
-
-    pathlib.Path('checkpoints').mkdir(exist_ok=True)
-    checkpoint_str = "checkpoints/task-%03d.pth"
-    print("Create mp queues")
-    population = mp.Queue(maxsize=population_size)
-    finish_tasks = mp.Queue(maxsize=population_size)
-    epoch = mp.Value('i', start_epoch)
-    if existing_parameter_dict is None:
-        results = dict()
-    else:
-        with open(existing_parameter_dict, "rb") as pickle_in:
-            results = pickle.load(pickle_in)
-    for i in range(population_size):
-        population.put(dict(id=i, score=0, mig=0, accuracy=0,
-                            elbo=0, active_units=[], n_active=0,
-                            random_states=generate_random_states()))
-    hyper_params = {'optimizer': ["lr"], "batch_size": True, "beta": True}
-    train_data_path = test_data_path = './data'
-    print("Create workers")
-    workers = [Worker(batch_size, epoch, max_epoch, population, finish_tasks, device, i, hyper_params, dataset,
-                      mig_active_factors, torch_limited_labels_rng_state, num_labels)
-               for i in range(worker_size)]
-    workers.append(Explorer(epoch, max_epoch, population, finish_tasks, hyper_params, workers[0].device_id,
-                            results, dataset, generate_random_states()))
-    print("Start workers")
-    [w.start() for w in workers]
-    print("Wait for workers to finish")
-    [w.join() for w in workers]
-    task = []
-    while not finish_tasks.empty():
-        task.append(finish_tasks.get())
-    while not population.empty():
-        task.append(population.get())
-    task = sorted(task, key=lambda x: x['score'], reverse=True)
-    print('best score on', task[0]['id'], 'is', task[0]['score'])
-    end = time.time()
-    print('Total execution time:', end-start)
+def init_gin(path_to_config):
+    print('Using gin config from', args.gin_config)
+    gin.external_configurable(VAE, module='vae_quant')
+    gin.external_configurable(UDRVAE, module='vae_quant')
+    gin.external_configurable(Adam)
+    gin.parse_config_file(args.gin_config)
 
 
 
@@ -143,8 +157,7 @@ if __name__ == "__main__":
     parser = init_argparser()
     args = parser.parse_args()
     if args.gin_config is not None and os.path.isfile(args.gin_config):
-        print('Using gin config from', args.gin_config)
-        gin.parse_config_file(args.gin_config)
+        init_gin(args.gin_config)
         pbt_main()
     else:
         pbt_main(args.device, args.population_size, args.batch_size, args.worker_size,

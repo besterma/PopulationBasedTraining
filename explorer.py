@@ -3,38 +3,38 @@ from shutil import copyfile
 import numpy as np
 import random
 import torch
-import torch.nn as nn
 import torch.multiprocessing as _mp
-import torch.optim as optim
-from vae_trainer import VAE_Trainer
-from utils import get_optimizer, exploit_and_explore, get_model
 import os
-
-import sys
-sys.path.append('../beta-tcvae')
-from vae_quant import VAE, UDRVAE
-import lib.dist as dist
-from plot_latent_vs_true import plot_vs_gt_shapes
-
 import time
+import gin
+import sys
+import vae_trainer
+import utils
+
+sys.path.append('../beta-tcvae')
+from plot_latent_vs_true import plot_vs_gt_shapes
 
 mp = _mp.get_context('spawn')
 
+
+@gin.configurable('explorer', whitelist=['start_epoch', 'max_epoch', 'trainer_class', 'exploit_and_explore_func'])
 class Explorer(mp.Process):
-    def __init__(self, epoch, max_epoch, population, finish_tasks, hyper_params,
-                 device_id, result_dict, dataset, random_states):
+    def __init__(self, population, finish_tasks, device_id, result_dict, dataset, random_states, start_epoch,
+                 max_epoch=gin.REQUIRED, exploit_and_explore_func=gin.REQUIRED,
+                 trainer_class=gin.REQUIRED):
         print("Init Explorer")
         super().__init__()
-        self.epoch = epoch
+        self.epoch = start_epoch
         self.population = population
         self.finish_tasks = finish_tasks
         self.max_epoch = max_epoch
-        self.hyper_params = hyper_params
         self.device_id = device_id
         self.result_dict = result_dict
         self.dataset = dataset
         self.random_state = np.random.RandomState()
+        self.exploit_and_explore_func = exploit_and_explore_func
         self.epoch_start_time = 0
+        self.trainer_class = trainer_class
 
         if 'scores' not in self.result_dict:
             self.result_dict['scores'] = dict()
@@ -42,7 +42,7 @@ class Explorer(mp.Process):
             self.result_dict['parameters'] = dict()
 
         self.set_rng_states(random_states)
-        self.latent_variable_plotter = LatentVariablePlotter(0, hyper_params, dataset, self.random_state)
+        self.latent_variable_plotter = LatentVariablePlotter(0, dataset, self.random_state, self.trainer_class)
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
@@ -54,9 +54,11 @@ class Explorer(mp.Process):
                 if status != 0:
                     break
 
+        print("Explorer finishing")
+        return
+
     @torch.no_grad()
     def main_loop(self):
-
         if self.population.empty() and self.finish_tasks.full():
             print("One epoch took", time.time() - self.epoch_start_time, "seconds")
             print("Exploit and explore")
@@ -75,20 +77,22 @@ class Explorer(mp.Process):
                 self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
                 self.saveModelParameters(tasks=tasks)
                 self.exportBestModelParameters(best_model_path, tasks[0])
-                fraction = 0.2
-                cutoff = int(np.ceil(fraction * len(tasks)))
-                tops = tasks[:cutoff]
-                bottoms = tasks[len(tasks) - cutoff:]
+
             except RuntimeError as err:
                 print("Runtime Error in Explorer:", err)
                 torch.cuda.empty_cache()
                 return 0
 
+            fraction = 0.2
+            cutoff = int(np.ceil(fraction * len(tasks)))
+            tops = tasks[:cutoff]
+            bottoms = tasks[len(tasks) - cutoff:]
+
             for bottom in bottoms:
                 top = self.random_state.choice(tops)
                 top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                 bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
-                exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, self.hyper_params, self.random_state)
+                self.exploit_and_explore_func(top_checkpoint_path, bot_checkpoint_path, self.random_state)
             with self.epoch.get_lock():
                 self.epoch.value += 1
                 print("New epoch: ", self.epoch.value)
@@ -131,7 +135,8 @@ class Explorer(mp.Process):
         print("Explorer export best model parameters")
         checkpoint = torch.load(top_checkpoint_path, map_location=torch.device('cpu'))
         with open('best_parameters.txt', 'a+') as f:
-            f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(task['id']) +
+            f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(
+                task['id']) +
                     " achieved with following parameters:")
             for i in range(self.epoch.value):
                 f.write("\n" + str(checkpoint['training_params'][i]) + str(checkpoint['scores'][i]))
@@ -161,29 +166,18 @@ class Explorer(mp.Process):
         torch.cuda.set_rng_state(torch_gpu_rng_state, device=0)
         torch.random.set_rng_state(torch_cpu_rng_state)
 
+
 class LatentVariablePlotter(object):
-    def __init__(self, device_id, hyper_params, dataset, random_state):
+    def __init__(self, device_id, dataset, random_state, trainer_class):
         self.device_id = device_id
-        self.hyper_params = hyper_params
         self.dataset = dataset
         self.random_state = random_state
+        self.trainer_class = trainer_class
 
     def get_trainer(self):
-        model = get_model(model_class=UDRVAE,
-                          use_cuda=True,
-                          z_dim=10,
-                          device_id=self.device_id,
-                          prior_dist=dist.Normal(),
-                          q_dist=dist.Normal(),
-                          hyperparameters=self.hyper_params,
-                          random_state=self.random_state)
-        optimizer, _ = get_optimizer(model, optim.Adam, 16, self.hyper_params, self.random_state)
-        trainer = VAE_Trainer(model=model,
-                              optimizer=optimizer,
-                              loss_fn=nn.CrossEntropyLoss(),
-                              batch_size=16,
-                              device=self.device_id,
-                              hyper_params=self.hyper_params)
+        trainer = self.trainer_class(device=0,
+                                     dataset=self.dataset,
+                                     random_state=self.random_state)
         return trainer
 
     @torch.no_grad()
@@ -193,6 +187,9 @@ class LatentVariablePlotter(object):
             trainer = self.get_trainer()
             trainer.load_checkpoint(top_checkpoint_name)
             for i, model in enumerate(trainer.model.children()):
-                plot_vs_gt_shapes(model, self.dataset, "latentVariables/best_epoch_{:03d}_task_{:03d}_model_{:03d}.png".format(epoch, task_id, i), range(trainer.model.z_dim), self.device_id)
+                plot_vs_gt_shapes(model, self.dataset,
+                                  "latentVariables/best_epoch_{:03d}_task_{:03d}_model_{:03d}.png".format(epoch,
+                                                                                                          task_id, i),
+                                  range(trainer.model.z_dim), self.device_id)
             del trainer
             torch.cuda.empty_cache()

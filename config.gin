@@ -1,0 +1,40 @@
+import vae_trainer
+
+start_epoch = 0
+max_epoch = 2
+hyper_parameters = ['lr', 'batch_size', 'beta']
+
+pbt_main.device = 'cuda'
+pbt_main.population_size = 3
+pbt_main.worker_size = 1
+pbt_main.random_seed = 42
+pbt_main.start_epoch = %start_epoch
+
+explorer.max_epoch = %max_epoch
+explorer.trainer_class = @trainer
+explorer.exploit_and_explore_func = @exploit_and_explore
+
+exploit_and_explore.hyper_params = %hyper_parameters
+exploit_and_explore.perturb_factors = (2, 1.2, 0.8, 0.5)
+
+worker.max_epoch = %max_epoch
+worker.trainer_class = @trainer
+
+trainer.model_class = @UDRVAE
+trainer.optimizer_class = @Adam
+trainer.hyper_params = %hyper_parameters
+trainer.is_test_run = True
+trainer.score_num_labels = None
+trainer.epoch_train_steps = 737280
+trainer.batch_size_init_function = @get_init_batch_size
+trainer.beta_init_function = @get_init_lr
+trainer.lr_init_function = @get_init_beta
+
+UDRVAE.z_dim = 10
+UDRVAE.use_cuda = True
+UDRVAE.include_mutinfo = True
+UDRVAE.tcvae = True
+UDRVAE.conv = True
+UDRVAE.mss = False
+
+

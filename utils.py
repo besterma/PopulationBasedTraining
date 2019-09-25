@@ -1,13 +1,26 @@
 import numpy as np
 import torch
-import time
-import torch.optim as optim
+import gin
 
 
+@gin.configurable(blacklist=['random_state'])
+def get_init_batch_size(random_state):
+    return int(random_state.choice(np.logspace(3, 10, base=2, dtype=int, num=8))) # 8 - 2048
 
+
+@gin.configurable(blacklist=['random_state'])
+def get_init_lr(random_state):
+    return random_state.choice(np.logspace(-5, 0, num=30, base=10))
+
+
+@gin.configurable(blacklist=['random_state'])
+def get_init_beta(random_state):
+    return int(random_state.choice(np.logspace(1, 15, base=1.5, num=24, dtype=int)[1:]))
+    # [1:] because else we would have 1 double
+
+
+"""
 def get_optimizer(model, optimizer, batch_size, hyperparameters, random_state):
-    """This is where users choose their optimizer and define the
-       hyperparameter space they'd like to search."""
 
     optimizer_class = optimizer
     lr = random_state.choice(np.logspace(-5, 0, num=30, base=10))
@@ -33,8 +46,10 @@ def get_model(model_class, use_cuda, z_dim, device_id, prior_dist, q_dist, hyper
                         conv=True,
                         device=device_id)
     return model
+"""
 
 
+@gin.configurable(whitelist=['hyper_params', 'perturb_factors'])
 def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, random_state,
                         perturb_factors=(2, 1.2, 0.8, 0.5)):
     """Copy parameters from the better model and the hyperparameters
@@ -49,14 +64,14 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, 
     scores = checkpoint['scores']
     model_random_state = checkpoint['random_state']
     training_params = checkpoint['training_params']
-    for hyperparam_name in hyper_params['optimizer']:
+    if 'lr' in hyper_params:
         perturb = random_state.choice(perturb_factors)
         for param_group in optimizer_state_dict['param_groups']:
-            param_group[hyperparam_name] *= perturb
-    if hyper_params['batch_size']:
+            param_group['lr'] *= perturb
+    if 'batch_size' in hyper_params:
         perturb = random_state.choice(perturb_factors)
         batch_size = int(np.minimum(np.ceil(perturb * batch_size), 1024)) #limit due to memory constraints
-    if hyper_params['beta']:
+    if 'beta' in hyper_params:
         perturb = random_state.choice(perturb_factors)
         beta = int(np.ceil(perturb * hyperparam_state_dict['beta']))
         hyperparam_state_dict['beta'] = beta

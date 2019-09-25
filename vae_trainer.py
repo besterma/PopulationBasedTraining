@@ -3,9 +3,9 @@ import numpy as np
 from torch.utils.data import DataLoader, RandomSampler
 from torch.autograd import Variable
 import time
-from torch.nn.modules.loss import MSELoss
 
 import sys
+import gin
 sys.path.append('../beta-tcvae')
 import lib.utils as utils
 import lib.datasets as dset
@@ -14,16 +14,47 @@ from udr_metric import udr_metric
 from elbo_decomposition import elbo_decomposition
 
 
-class VAE_Trainer:
+class Trainer(object):
+    """Abstract class for trainers."""
 
-    def __init__(self, model, optimizer, loss_fn=None, train_data=None,
-                 test_data=None, batch_size=None, device=None, train_loader=None,
-                 hyper_params=None, dataset=None, mig_active_factors=np.array([0, 1, 2, 3]),
-                 torch_random_state=None, score_num_labels=None):
+    def train(self, epoch, train_steps):
+        raise NotImplementedError()
 
-        self.model = model
-        self.optimizer = optimizer
-        self.batch_size = batch_size
+    def save_checkpoint(self, checkpoint_path, random_state):
+        raise NotImplementedError()
+
+    def load_checkpoint(self, checkpoint_path):
+        raise NotImplementedError()
+
+    def eval(self, epoch):
+        raise NotImplementedError()
+
+    def release_memory(self):
+        raise NotImplementedError()
+
+    def set_id(self, new_id):
+        raise NotImplementedError()
+
+
+@gin.configurable("trainer", blacklist=['score_random_state', 'random_state', 'dataset', 'device'])
+class UdrVaeTrainer(Trainer):
+    def __init__(self, model_class, optimizer_class, device=None,
+                 hyper_params=None, dataset=None, mig_active_factors=None, is_test_run=False,
+                 score_random_state=None, score_num_labels=None, random_state=None, epoch_train_steps=737280,
+                 batch_size=None, batch_size_init_function=None,
+                 beta=None, beta_init_function=None,
+                 lr=None, lr_init_function=None):
+
+        # Technically only needed for first time model creation, after that they will be overridden during chkpt loading
+        beta = beta_init_function(random_state) if 'beta' in hyper_params else beta
+        self.batch_size = batch_size_init_function(random_state) if 'batch_size' in hyper_params else batch_size
+        lr = lr_init_function(random_state) if 'lr' in hyper_params else lr
+
+        # Other parameters are supplied by gin config
+        self.model = model_class(use_cuda=(device != torch.device('cpu' and device != 'cpu')),  # TODO Might fail
+                                 device=device,
+                                 beta=beta)
+        self.optimizer = optimizer_class(self.model.parameters(), lr=lr)
         self.task_id = None
         self.device = device
         self.elbo_running_mean = [utils.RunningAverageMeter() for i in range(5)]
@@ -31,12 +62,14 @@ class VAE_Trainer:
         self.scores = dict()
         self.hyper_params = hyper_params
         self.dataset = dataset
-        self.mig_active_factors = mig_active_factors
-        self.torch_random_state = torch_random_state
+        self.mig_active_factors = np.array(mig_active_factors) if mig_active_factors is not None else np.array([0, 1, 2, 3])
+        self.score_random_state = score_random_state
         self.score_num_labels = score_num_labels
+        self.epoch_train_steps = epoch_train_steps
+        self.is_test_run = is_test_run
 
-    def set_id(self, num):
-        self.task_id = num
+    def set_id(self, new_id):
+        self.task_id = new_id
 
     def release_memory(self):
         self.model.to_device('cpu')
@@ -71,11 +104,11 @@ class VAE_Trainer:
     def save_training_params(self, epoch):
         param_dict = dict(epoch=epoch)
         optim_state_dict = self.optimizer.state_dict()
-        for hyperparam_name in self.hyper_params['optimizer']:
-            param_dict[hyperparam_name] = optim_state_dict['param_groups'][0].get(hyperparam_name, "empty")
-        if self.hyper_params['batch_size']:
+        if 'lr' in self.hyper_params:
+            param_dict['lr'] = optim_state_dict['param_groups'][0].get('lr', "empty")
+        if 'batch_size' in self.hyper_params:
             param_dict['batch_size'] = self.batch_size
-        if self.hyper_params['beta']:
+        if 'beta' in self.hyper_params:
             param_dict['beta'] = self.model.beta
 
         self.training_params[epoch] = param_dict
@@ -85,9 +118,7 @@ class VAE_Trainer:
                           elbo=elbo, active_units=active_units, n_active=n_active, elbo_dict=elbo_dict)
         self.scores[epoch] = score_dict
 
-    def train(self, epoch, num_subepochs=1):
-
-
+    def train(self, epoch):
 
         start = time.time()
         print(self.task_id, "loading data")
@@ -101,70 +132,39 @@ class VAE_Trainer:
         dataset_size = len(train_loader.dataset)
         print(self.task_id, "start training with parameters B", self.model.beta, "lr",
               self.optimizer.param_groups[0]["lr"], "batch size", self.batch_size)
-        subepoch = 0
+        current_train_steps = 0
         with torch.cuda.device(self.device):
-            while subepoch < num_subepochs:
-                print("task", self.task_id, "subepoch", subepoch)
-                self.training_iteration(dataset_size, train_loader)
-                subepoch += 1
+            while current_train_steps < self.epoch_train_steps:
+                for i, x in enumerate(train_loader):
+                    if current_train_steps >= self.epoch_train_steps:
+                        break
+                    if current_train_steps + x.size(0) > self.epoch_train_steps:
+                        x = x[:self.epoch_train_steps - current_train_steps]
+                        current_train_steps = self.epoch_train_steps
+                    else:
+                        current_train_steps += x.size(0)
+                    if current_train_steps % 200000 == 0:
+                        print("task", self.task_id, "iteration", current_train_steps, "of", self.epoch_train_steps)
+
+                    if self.is_test_run and current_train_steps % 10000 != 0:
+                        continue
+
+                    self.model.train()
+                    self.optimizer.zero_grad()
+                    x = x.to(device=self.device)
+                    x = Variable(x)
+                    obj = self.model.elbo(x, dataset_size)
+                    if self.model.nan_in_objective(obj):
+                        raise ValueError('NaN spotted in objective.')
+                    self.model.backward(obj)
+                    [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(5)]
+                    self.optimizer.step()
+
+        self.optimizer.zero_grad()
         self.save_training_params(epoch=epoch)
         torch.cuda.empty_cache()
         print("finished training in", time.time() - start, "seconds")
         del train_loader
-
-    def training_iteration(self, dataset_size, train_loader):
-        iteration = 0
-        for i, x in enumerate(train_loader):
-            iteration += x.size(0)
-
-            # if iteration % 10000 != 0:
-            #     continue
-
-            if iteration % 200000 == 0:
-                print("task", self.task_id, "iteration", iteration, "of", dataset_size)
-            # print("iteration", iteration, "of", dataset_size)
-
-            self.model.train()
-            self.optimizer.zero_grad()
-            x = x.to(device=self.device)
-            x = Variable(x)
-            obj = self.model.elbo(x, dataset_size)
-            if self.model.nan_in_objective(obj):
-                raise ValueError('NaN spotted in objective.')
-            self.model.backward(obj)
-            [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(5)]
-            self.optimizer.step()
-            for part_obj, elbo in obj:
-                del part_obj
-                del elbo
-        self.optimizer.zero_grad()
-
-    @staticmethod
-    def anneal_kl(self, dataset, vae, iteration):
-        if dataset == 'shapes':
-            warmup_iter = 7000
-        elif dataset == 'faces':
-            warmup_iter = 2500
-        else:
-            warmup_iter = 5000
-
-        vae.lamb = max(0, 0.95 - 1 / warmup_iter * iteration) # 1 --> 0
-
-    @staticmethod
-    def anneal_beta(self, dataset, vae, batch_size, iteration, epoch, orig_beta, dataset_size):
-        if dataset == 'shapes':
-            warmup_iter_0 = 3 * dataset_size
-            warmup_iter_orig = 7 * dataset_size
-        elif dataset == 'faces':
-            warmup_iter = 2500
-
-        current_overall_iter = iteration + epoch * dataset_size
-        if current_overall_iter < warmup_iter_0:
-            vae.beta = min(orig_beta, 1 / warmup_iter_0 * current_overall_iter)  # 0 --> 1
-        elif current_overall_iter < warmup_iter_orig:
-            vae.beta = min(orig_beta, orig_beta / warmup_iter_orig * current_overall_iter)  # 1 --> orig_beta
-        else:
-            vae.beta = orig_beta
 
     @torch.no_grad()
     def eval(self, epoch=0, final=False):
@@ -196,54 +196,3 @@ class VAE_Trainer:
             return final_score, combined_full, 0, [self.elbo_running_mean[k].val for k in range(5)], [], n_active, elbo_dict
         else:
             return final_score
-
-    @torch.no_grad()
-    def reconstructionError(self, num_samples = 2048):
-        VAR_THRESHOLD = 1e-2
-        accuracy = 0
-        with torch.cuda.device(self.device):
-            randomSampler = RandomSampler(self.dataset, replacement=True, num_samples = 2**18) # 262144
-            dataLoader = DataLoader(self.dataset, batch_size=256, shuffle=False, num_workers=0,
-                                    pin_memory=True, sampler=randomSampler)
-            loss = MSELoss()
-            data_size = len(randomSampler)
-            N = len(dataLoader.dataset)
-            K = self.model.z_dim
-            Z = self.model.q_dist.nparams
-            qz_params = torch.Tensor(N, K, Z).to(self.device)
-            for i, x in enumerate(dataLoader):
-                batch_size = x.size(0)
-                n = dataLoader.batch_size * i
-                x = x.view(batch_size, 1, 64, 64).to(self.device)
-                xs, _, _, _ = self.model.reconstruct_img(x)
-                qz_params[n:n + batch_size] = self.model.encoder.forward(x).\
-                                                view(batch_size, K, Z).\
-                                                data.to(self.device)
-                xs = xs.view(batch_size, -1)
-                x = x.view(batch_size, -1)
-                acc_temp = loss(xs, x)
-                accuracy += acc_temp * batch_size / data_size
-
-            qz_means = qz_params[:,:,0]
-            var = torch.std(qz_means.contiguous().view(N, K), dim=0).pow(2)
-            active_units = torch.arange(0, K)[var > VAR_THRESHOLD].to("cpu").numpy()
-            n_active = len(active_units)
-
-
-        return accuracy.to('cpu').numpy(), active_units, n_active
-
-    @torch.no_grad()
-    def elbo_decomp(self):
-        randomSampler = RandomSampler(self.dataset, replacement=True, num_samples=2 ** 18, )  # 65536
-        dataLoader = DataLoader(self.dataset, batch_size=256, shuffle=False, num_workers=0,
-                                pin_memory=True, sampler=randomSampler)
-        logpx, dependence, information, dimwise_kl, analytical_cond_kl, marginal_entropies, joint_entropy = elbo_decomposition(self.model, dataLoader, self.device)
-
-        return dict(logpx=logpx.to('cpu').numpy(),
-                    dependence=dependence.to('cpu').numpy(),
-                    information=information.to('cpu').numpy(),
-                    dimwise_kl=dimwise_kl.to('cpu').numpy(),
-                    analytical_cond_kl=analytical_cond_kl.to('cpu').numpy(),
-                    marginal_entropies=marginal_entropies.to('cpu').numpy(),
-                    joint_entropy=joint_entropy.to('cpu').numpy(),
-                    estimated_elbo=(logpx - analytical_cond_kl).to('cpu').numpy())
