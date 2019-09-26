@@ -10,6 +10,7 @@ import gin
 import sys
 import vae_trainer
 import utils
+from torch.optim import Adam
 
 sys.path.append('../beta-tcvae')
 from plot_latent_vs_true import plot_vs_gt_shapes
@@ -19,9 +20,9 @@ mp = _mp.get_context('spawn')
 
 @gin.configurable('explorer', whitelist=['start_epoch', 'max_epoch', 'trainer_class', 'exploit_and_explore_func'])
 class Explorer(mp.Process):
-    def __init__(self, population, finish_tasks, device_id, result_dict, dataset, random_states, start_epoch,
+    def __init__(self, population, finish_tasks, device_id, result_dict, dataset, random_states, start_epoch, gin_string,
                  max_epoch=gin.REQUIRED, exploit_and_explore_func=gin.REQUIRED,
-                 trainer_class=gin.REQUIRED):
+                 trainer_class=gin.REQUIRED, cutoff=0.2):
         print("Init Explorer")
         super().__init__()
         self.epoch = start_epoch
@@ -35,6 +36,8 @@ class Explorer(mp.Process):
         self.exploit_and_explore_func = exploit_and_explore_func
         self.epoch_start_time = 0
         self.trainer_class = trainer_class
+        self.gin_config = gin_string
+        self.cutoff = cutoff
 
         if 'scores' not in self.result_dict:
             self.result_dict['scores'] = dict()
@@ -46,6 +49,8 @@ class Explorer(mp.Process):
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
+        gin.external_configurable(Adam, module='torch')
+        gin.parse_config(self.gin_config)
         os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
         with torch.cuda.device(0):
             self.epoch_start_time = time.time()
@@ -83,7 +88,7 @@ class Explorer(mp.Process):
                 torch.cuda.empty_cache()
                 return 0
 
-            fraction = 0.2
+            fraction = self.cutoff
             cutoff = int(np.ceil(fraction * len(tasks)))
             tops = tasks[:cutoff]
             bottoms = tasks[len(tasks) - cutoff:]
@@ -92,7 +97,9 @@ class Explorer(mp.Process):
                 top = self.random_state.choice(tops)
                 top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
                 bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
-                self.exploit_and_explore_func(top_checkpoint_path, bot_checkpoint_path, self.random_state)
+                self.exploit_and_explore_func(top_checkpoint_path=top_checkpoint_path,
+                                              bot_checkpoint_path=bot_checkpoint_path,
+                                              random_state=self.random_state)
             with self.epoch.get_lock():
                 self.epoch.value += 1
                 print("New epoch: ", self.epoch.value)

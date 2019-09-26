@@ -36,7 +36,7 @@ class Trainer(object):
         raise NotImplementedError()
 
 
-@gin.configurable("trainer", blacklist=['score_random_state', 'random_state', 'dataset', 'device'])
+@gin.configurable(blacklist=['score_random_state', 'random_state', 'dataset', 'device'])
 class UdrVaeTrainer(Trainer):
     def __init__(self, model_class, optimizer_class, device=None,
                  hyper_params=None, dataset=None, mig_active_factors=None, is_test_run=False,
@@ -51,7 +51,7 @@ class UdrVaeTrainer(Trainer):
         lr = lr_init_function(random_state) if 'lr' in hyper_params else lr
 
         # Other parameters are supplied by gin config
-        self.model = model_class(use_cuda=(device != torch.device('cpu' and device != 'cpu')),  # TODO Might fail
+        self.model = model_class(use_cuda=(device != torch.device('cpu') and device != 'cpu'),  # TODO Might fail
                                  device=device,
                                  beta=beta)
         self.optimizer = optimizer_class(self.model.parameters(), lr=lr)
@@ -175,12 +175,12 @@ class UdrVaeTrainer(Trainer):
                                                                                                 self.dataset,
                                                                                                 self.device,
                                                                                                 self.mig_active_factors,
-                                                                                                random_state=self.torch_random_state,
+                                                                                                random_state=self.score_random_state,
                                                                                                 num_labels=self.score_num_labels,
                                                                                                 num_samples=2048)
 
         udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', self.batch_size,
-                                         self.device, self.torch_random_state)
+                                         self.device, self.score_random_state)
 
         elbo_dict = dict()
         final_score = udr_score

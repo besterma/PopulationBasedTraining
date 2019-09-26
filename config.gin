@@ -1,40 +1,40 @@
-import vae_trainer
-
 start_epoch = 0
-max_epoch = 2
+max_epoch = 1
 hyper_parameters = ['lr', 'batch_size', 'beta']
 
 pbt_main.device = 'cuda'
-pbt_main.population_size = 3
+pbt_main.population_size = 2
 pbt_main.worker_size = 1
 pbt_main.random_seed = 42
 pbt_main.start_epoch = %start_epoch
+pbt_main.existing_parameter_dict = None
 
 explorer.max_epoch = %max_epoch
-explorer.trainer_class = @trainer
+explorer.trainer_class = @vae_trainer.UdrVaeTrainer
 explorer.exploit_and_explore_func = @exploit_and_explore
+explorer.cutoff = 0.2
 
 exploit_and_explore.hyper_params = %hyper_parameters
 exploit_and_explore.perturb_factors = (2, 1.2, 0.8, 0.5)
 
 worker.max_epoch = %max_epoch
-worker.trainer_class = @trainer
+worker.trainer_class = @vae_trainer.UdrVaeTrainer
 
-trainer.model_class = @UDRVAE
-trainer.optimizer_class = @Adam
-trainer.hyper_params = %hyper_parameters
-trainer.is_test_run = True
-trainer.score_num_labels = None
-trainer.epoch_train_steps = 737280
-trainer.batch_size_init_function = @get_init_batch_size
-trainer.beta_init_function = @get_init_lr
-trainer.lr_init_function = @get_init_beta
+vae_trainer.UdrVaeTrainer.model_class = @vae_quant.UDRVAE # Does not work at the moment
+vae_trainer.UdrVaeTrainer.optimizer_class = @torch.Adam
+vae_trainer.UdrVaeTrainer.hyper_params = %hyper_parameters
+vae_trainer.UdrVaeTrainer.is_test_run = True
+vae_trainer.UdrVaeTrainer.score_num_labels = None
+vae_trainer.UdrVaeTrainer.epoch_train_steps = 737280
+vae_trainer.UdrVaeTrainer.batch_size_init_function = @get_init_batch_size
+vae_trainer.UdrVaeTrainer.beta_init_function = @get_init_lr
+vae_trainer.UdrVaeTrainer.lr_init_function = @get_init_beta
 
-UDRVAE.z_dim = 10
-UDRVAE.use_cuda = True
-UDRVAE.include_mutinfo = True
-UDRVAE.tcvae = True
-UDRVAE.conv = True
-UDRVAE.mss = False
+vae_quant.UDRVAE.z_dim = 10
+vae_quant.UDRVAE.use_cuda = True
+vae_quant.UDRVAE.include_mutinfo = True
+vae_quant.UDRVAE.tcvae = True
+vae_quant.UDRVAE.conv = True
+vae_quant.UDRVAE.mss = False
 
 

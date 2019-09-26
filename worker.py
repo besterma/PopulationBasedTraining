@@ -7,13 +7,14 @@ import torch.multiprocessing as _mp
 import gin
 import vae_trainer
 import utils
+from torch.optim import Adam
 
 mp = _mp.get_context('spawn')
 
 
 @gin.configurable('worker', whitelist=['max_epoch', 'trainer_class'])
 class Worker(mp.Process):
-    def __init__(self, population, finish_tasks, device, worker_id, dataset, start_epoch,
+    def __init__(self, population, finish_tasks, device, worker_id, dataset, start_epoch, gin_string,
                  max_epoch=gin.REQUIRED, trainer_class=gin.REQUIRED, score_random_state=None):
         super().__init__()
         print("Init Worker")
@@ -26,6 +27,7 @@ class Worker(mp.Process):
         self.score_random_state = score_random_state
         self.random_state = np.random.RandomState()
         self.trainer_class = trainer_class
+        self.gin_config = gin_string
 
         np.random.seed(worker_id)
         if device != 'cpu':
@@ -38,6 +40,10 @@ class Worker(mp.Process):
             self.device_id = 'cpu'
 
     def run(self):
+        print('starting worker')
+        gin.external_configurable(Adam, module='torch')
+        gin.parse_config(self.gin_config)
+        print(gin.query_parameter('vae_trainer.UdrVaeTrainer.model_class'))
         os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
