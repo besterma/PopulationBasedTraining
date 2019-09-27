@@ -14,7 +14,7 @@ mp = _mp.get_context('spawn')
 
 @gin.configurable('worker', whitelist=['max_epoch', 'trainer_class'])
 class Worker(mp.Process):
-    def __init__(self, population, finish_tasks, device, worker_id, dataset, start_epoch, gin_string,
+    def __init__(self, population, finish_tasks, device, worker_id, dataset, start_epoch, gin_string, model_dir,
                  max_epoch=gin.REQUIRED, trainer_class=gin.REQUIRED, score_random_state=None):
         super().__init__()
         print("Init Worker")
@@ -28,6 +28,7 @@ class Worker(mp.Process):
         self.random_state = np.random.RandomState()
         self.trainer_class = trainer_class
         self.gin_config = gin_string
+        self.model_dir = model_dir
 
         np.random.seed(worker_id)
         if device != 'cpu':
@@ -70,7 +71,7 @@ class Worker(mp.Process):
             return 1
         print("Worker", self.worker_id, "working on task", task['id'])
         try:
-            checkpoint_path = "checkpoints/task-%03d.pth" % task['id']
+            checkpoint_path = os.path.join(self.model_dir, "checkpoints/task-%03d.pth" % task['id'])
             self.set_rng_states(task["random_states"])
 
             trainer = self.trainer_class(device=0,

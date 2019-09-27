@@ -18,10 +18,11 @@ from plot_latent_vs_true import plot_vs_gt_shapes
 mp = _mp.get_context('spawn')
 
 
-@gin.configurable('explorer', whitelist=['start_epoch', 'max_epoch', 'trainer_class', 'exploit_and_explore_func'])
+@gin.configurable('explorer',
+                  whitelist=['start_epoch', 'max_epoch', 'trainer_class', 'exploit_and_explore_func', 'cutoff'])
 class Explorer(mp.Process):
     def __init__(self, population, finish_tasks, device_id, result_dict, dataset, random_states, start_epoch, gin_string,
-                 max_epoch=gin.REQUIRED, exploit_and_explore_func=gin.REQUIRED,
+                 model_dir, max_epoch=gin.REQUIRED, exploit_and_explore_func=gin.REQUIRED,
                  trainer_class=gin.REQUIRED, cutoff=0.2):
         print("Init Explorer")
         super().__init__()
@@ -38,6 +39,7 @@ class Explorer(mp.Process):
         self.trainer_class = trainer_class
         self.gin_config = gin_string
         self.cutoff = cutoff
+        self.model_dir = model_dir
 
         if 'scores' not in self.result_dict:
             self.result_dict['scores'] = dict()
@@ -45,7 +47,8 @@ class Explorer(mp.Process):
             self.result_dict['parameters'] = dict()
 
         self.set_rng_states(random_states)
-        self.latent_variable_plotter = LatentVariablePlotter(0, dataset, self.random_state, self.trainer_class)
+        self.latent_variable_plotter = LatentVariablePlotter(0, dataset, self.random_state,
+                                                             self.trainer_class, model_dir)
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
@@ -75,7 +78,7 @@ class Explorer(mp.Process):
             print("Total #tasks:", len(tasks))
             print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])
             print('Worst score on', tasks[-1]['id'], 'is', tasks[-1]['score'])
-            best_model_path = "checkpoints/task-{:03d}.pth".format(tasks[0]['id'])
+            best_model_path = os.path.join(self.model_dir, "checkpoints/task-{:03d}.pth".format(tasks[0]['id']))
             try:
                 self.exportScores(tasks=tasks)
                 self.exportBestModel(best_model_path)
@@ -95,8 +98,8 @@ class Explorer(mp.Process):
 
             for bottom in bottoms:
                 top = self.random_state.choice(tops)
-                top_checkpoint_path = "checkpoints/task-%03d.pth" % top['id']
-                bot_checkpoint_path = "checkpoints/task-%03d.pth" % bottom['id']
+                top_checkpoint_path = os.path.join(self.model_dir, "checkpoints/task-%03d.pth" % top['id'])
+                bot_checkpoint_path = os.path.join(self.model_dir, "checkpoints/task-%03d.pth" % bottom['id'])
                 self.exploit_and_explore_func(top_checkpoint_path=top_checkpoint_path,
                                               bot_checkpoint_path=bot_checkpoint_path,
                                               random_state=self.random_state)
@@ -136,12 +139,13 @@ class Explorer(mp.Process):
             self.result_dict['scores'][self.epoch.value] = tasks
 
     def exportBestModel(self, top_checkpoint_path):
-        copyfile(top_checkpoint_path, "bestmodels/model_epoch-{:03d}.pth".format(self.epoch.value))
+        copyfile(top_checkpoint_path,
+                 os.path.join(self.model_dir, "bestmodels/model_epoch-{:03d}.pth".format(self.epoch.value)))
 
     def exportBestModelParameters(self, top_checkpoint_path, task):
         print("Explorer export best model parameters")
         checkpoint = torch.load(top_checkpoint_path, map_location=torch.device('cpu'))
-        with open('best_parameters.txt', 'a+') as f:
+        with open(os.path.join(self.model_dir, 'best_parameters.txt'), 'a+') as f:
             f.write("\n\n" + str(self.epoch.value) + ". Epoch: Score of " + str(task['score']) + " for task " + str(
                 task['id']) +
                     " achieved with following parameters:")
@@ -152,7 +156,8 @@ class Explorer(mp.Process):
         print("Explorer save model parameters")
         temp_dict = dict()
         for task in tasks:
-            checkpoint = torch.load("checkpoints/task-{:03d}.pth".format(task['id']), map_location=torch.device('cpu'))
+            checkpoint = torch.load(os.path.join(self.model_dir, "checkpoints/task-{:03d}.pth".format(task['id'])),
+                                    map_location=torch.device('cpu'))
             checkpoint_dict = dict()
             checkpoint_dict['training_params'] = checkpoint['training_params']
             checkpoint_dict['scores'] = checkpoint['scores']
@@ -160,7 +165,8 @@ class Explorer(mp.Process):
 
         self.result_dict['parameters'][self.epoch.value] = temp_dict
 
-        pickle_out = open("parameters/parameters-{:03d}.pickle".format(self.epoch.value), "wb")
+        pickle_out = open(os.path.join(self.model_dir, "parameters/parameters-{:03d}.pickle".format(self.epoch.value)),
+                          "wb")
         pickle.dump(self.result_dict, pickle_out)
         pickle_out.close()
 
@@ -175,11 +181,12 @@ class Explorer(mp.Process):
 
 
 class LatentVariablePlotter(object):
-    def __init__(self, device_id, dataset, random_state, trainer_class):
+    def __init__(self, device_id, dataset, random_state, trainer_class, model_dir):
         self.device_id = device_id
         self.dataset = dataset
         self.random_state = random_state
         self.trainer_class = trainer_class
+        self.model_dir = model_dir
 
     def get_trainer(self):
         trainer = self.trainer_class(device=0,
@@ -195,8 +202,10 @@ class LatentVariablePlotter(object):
             trainer.load_checkpoint(top_checkpoint_name)
             for i, model in enumerate(trainer.model.children()):
                 plot_vs_gt_shapes(model, self.dataset,
-                                  "latentVariables/best_epoch_{:03d}_task_{:03d}_model_{:03d}.png".format(epoch,
-                                                                                                          task_id, i),
+                                  os.path.join(self.model_dir,
+                                               "latentVariables/"
+                                               "best_epoch_{:03d}_task_{:03d}_model_{:03d}.png".format(epoch,
+                                                                                                       task_id, i)),
                                   range(trainer.model.z_dim), self.device_id)
             del trainer
             torch.cuda.empty_cache()

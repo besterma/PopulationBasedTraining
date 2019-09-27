@@ -22,8 +22,8 @@ import lib.dist as dist
 mp = _mp.get_context('spawn')
 
 
-@gin.configurable(blacklist='dataset')
-def pbt_main(device='cpu', population_size=24, worker_size=8, start_epoch=0,
+@gin.configurable(blacklist=['dataset'])
+def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_epoch=0,
              existing_parameter_dict=None, random_seed=7, dataset=None):
     print("Lets go!")
     start = time.time()
@@ -46,11 +46,15 @@ def pbt_main(device='cpu', population_size=24, worker_size=8, start_epoch=0,
     init_random_state(random_seed)
     torch_limited_labels_rng_state = torch.random.get_rng_state()
 
-    if dataset is not None:
+    if dataset is None:
         with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
             dataset = torch.from_numpy(dataset_zip['imgs']).float()
 
-    pathlib.Path('checkpoints').mkdir(exist_ok=True)
+    pathlib.Path(os.path.join(model_dir, 'checkpoints')).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(os.path.join(model_dir, 'bestmodels')).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(os.path.join(model_dir, 'latentVariables')).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(os.path.join(model_dir, 'parameters')).mkdir(parents=True, exist_ok=True)
+
     checkpoint_str = "checkpoints/task-%03d.pth"
     print("Create mp queues")
     population = mp.Queue(maxsize=population_size)
@@ -67,11 +71,12 @@ def pbt_main(device='cpu', population_size=24, worker_size=8, start_epoch=0,
                             random_states=generate_random_states()))
     train_data_path = test_data_path = './data'
     print("Create workers")
-    workers = [Worker(population, finish_tasks, device, i, dataset, gin_string=gin.config_str(),
+    workers = [Worker(population, finish_tasks, device, i, dataset, gin_string=gin.config_str(), model_dir=model_dir,
                       score_random_state=torch_limited_labels_rng_state, start_epoch=epoch, trainer_class=UdrVaeTrainer)
                for i in range(worker_size)]
     workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, dataset, generate_random_states(),
-                            gin_string=gin.config_str(), start_epoch=epoch, trainer_class=UdrVaeTrainer))
+                            model_dir=model_dir, gin_string=gin.config_str(), start_epoch=epoch,
+                            trainer_class=UdrVaeTrainer))
     print("Start workers")
     [w.start() for w in workers]
     print("Wait for workers to finish")
@@ -87,6 +92,7 @@ def pbt_main(device='cpu', population_size=24, worker_size=8, start_epoch=0,
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     end = time.time()
     print('Total execution time:', end-start)
+    return task[0]['id'], task[0]['score'], task[0]['mig']
 
 
 def generate_random_states():

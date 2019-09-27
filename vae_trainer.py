@@ -6,7 +6,7 @@ import time
 
 import sys
 import gin
-sys.path.append('../beta-tcvae')
+sys.path.append('/home/besterma/ETH/Semester_Thesis/Python/beta-tcvae')
 import lib.utils as utils
 import lib.datasets as dset
 from disentanglement_metrics import metrics_shapes

@@ -20,7 +20,7 @@ exploit_and_explore.perturb_factors = (2, 1.2, 0.8, 0.5)
 worker.max_epoch = %max_epoch
 worker.trainer_class = @vae_trainer.UdrVaeTrainer
 
-vae_trainer.UdrVaeTrainer.model_class = @vae_quant.UDRVAE # Does not work at the moment
+# vae_trainer.UdrVaeTrainer.model_class = @vae_quant.UDRVAE # Does not work at the moment
 vae_trainer.UdrVaeTrainer.optimizer_class = @torch.Adam
 vae_trainer.UdrVaeTrainer.hyper_params = %hyper_parameters
 vae_trainer.UdrVaeTrainer.is_test_run = True
