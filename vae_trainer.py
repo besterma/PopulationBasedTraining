@@ -125,7 +125,7 @@ class UdrVaeTrainer(Trainer):
         with torch.cuda.device(self.device):
             train_loader = DataLoader(dataset=self.dataset,
                                       batch_size=self.batch_size,
-                                      shuffle=True,
+                                      shuffle=False,
                                       num_workers=0,
                                       pin_memory=True)
         print(self.task_id, "finished_loading_data")

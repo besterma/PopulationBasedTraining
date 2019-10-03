@@ -11,6 +11,7 @@ import sys
 import vae_trainer
 import utils
 from torch.optim import Adam
+from utils import TorchIterableDataset
 
 sys.path.append('../beta-tcvae')
 from plot_latent_vs_true import plot_vs_gt_shapes
@@ -32,7 +33,6 @@ class Explorer(mp.Process):
         self.max_epoch = max_epoch
         self.device_id = device_id
         self.result_dict = result_dict
-        self.dataset = dataset
         self.random_state = np.random.RandomState()
         self.exploit_and_explore_func = exploit_and_explore_func
         self.epoch_start_time = 0
@@ -47,7 +47,8 @@ class Explorer(mp.Process):
             self.result_dict['parameters'] = dict()
 
         self.set_rng_states(random_states)
-        self.latent_variable_plotter = LatentVariablePlotter(0, dataset, self.random_state,
+        self.dataset_iterator = TorchIterableDataset(dataset, self.random_state.randint(2**32))
+        self.latent_variable_plotter = LatentVariablePlotter(0, self.dataset_iterator, self.random_state,
                                                              self.trainer_class, model_dir)
 
     def run(self):

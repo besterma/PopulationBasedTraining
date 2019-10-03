@@ -19,6 +19,19 @@ def get_init_beta(random_state):
     # [1:] because else we would have 1 double
 
 
+class TorchIterableDataset(torch.utils.data.IterableDataset):
+    def __init__(self, ground_truth_data, random_seed):
+        self.random_state = np.random.RandomState(random_seed)
+        self.ground_truth_data = ground_truth_data
+
+    def __iter__(self):
+        while True:
+            yield self.ground_truth_data.sample_observations(1, self.random_state)[0]
+
+    def __len__(self):
+        return np.prod(self.ground_truth_data.factor_sizes)
+
+
 """
 def get_optimizer(model, optimizer, batch_size, hyperparameters, random_state):
 

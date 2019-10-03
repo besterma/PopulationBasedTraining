@@ -8,6 +8,7 @@ import gin
 import vae_trainer
 import utils
 from torch.optim import Adam
+from utils import TorchIterableDataset
 
 mp = _mp.get_context('spawn')
 
@@ -22,7 +23,7 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.population = population
         self.finish_tasks = finish_tasks
-        self.dataset = dataset
+        self.dataset_iterator = dataset
         self.worker_id = worker_id
         self.score_random_state = score_random_state
         self.random_state = np.random.RandomState()
@@ -75,7 +76,7 @@ class Worker(mp.Process):
             self.set_rng_states(task["random_states"])
 
             trainer = self.trainer_class(device=0,
-                                         dataset=self.dataset,
+                                         dataset=None,
                                          random_state=self.random_state,
                                          score_random_state=self.score_random_state)
             trainer.set_id(task['id'])  # double on purpose to have right id as early as possible (for logging)
@@ -83,9 +84,12 @@ class Worker(mp.Process):
                 random_states = trainer.load_checkpoint(checkpoint_path)
                 self.set_rng_states(random_states)
 
+            trainer.dataset = TorchIterableDataset(self.dataset_iterator, self.random_state.randint(2**32))
+
             # Train
             trainer.set_id(task['id'])
             trainer.train(self.epoch.value)
+            trainer.dataset = TorchIterableDataset(self.dataset_iterator, self.score_random_state)
             score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value,
                                                                                          final=True)
             trainer.save_checkpoint(checkpoint_path, self.get_rng_states())

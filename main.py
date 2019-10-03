@@ -44,7 +44,7 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     random_seed = random_seed
 
     init_random_state(random_seed)
-    torch_limited_labels_rng_state = torch.random.get_rng_state()
+    torch_limited_labels_rng_state = np.random.randint(2**32)
 
     if dataset is None:
         with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
