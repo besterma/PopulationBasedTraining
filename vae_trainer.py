@@ -171,28 +171,17 @@ class UdrVaeTrainer(Trainer):
         self.model.eval()
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(5)])
         start = time.time()
-        new_mig_metric, mig_metric, full_mig_metric, full_new_mig_metric, _, _ = metrics_shapes(next(self.model.children()),
-                                                                                                self.dataset,
-                                                                                                self.device,
-                                                                                                self.mig_active_factors,
-                                                                                                random_state=self.score_random_state,
-                                                                                                num_labels=self.score_num_labels,
-                                                                                                num_samples=2048)
+        udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', 128,
+                                         self.device)
 
-        udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', self.batch_size,
-                                         self.device, self.score_random_state)
-
-        elbo_dict = dict()
         final_score = udr_score
-        combined_full = (full_new_mig_metric + full_mig_metric) / 2
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              [self.elbo_running_mean[k].val for k in range(5)], "got MIG", full_mig_metric, "new MIG", full_new_mig_metric, "and UDR", udr_score,
-              "final score:", final_score)
+              [self.elbo_running_mean[k].val for k in range(5)], "and UDR", udr_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
-        self.update_scores(epoch=epoch, final_score=final_score, mig_score=full_mig_metric, new_mig_score=full_new_mig_metric,
+        self.update_scores(epoch=epoch, final_score=final_score, mig_score=0, new_mig_score=0,
                            accuracy=0, elbo=[self.elbo_running_mean[k].val for k in range(5)], active_units=[],
-                           n_active=n_active, elbo_dict=elbo_dict)
+                           n_active=n_active, elbo_dict=dict())
         if final:
-            return final_score, combined_full, 0, [self.elbo_running_mean[k].val for k in range(5)], [], n_active, elbo_dict
+            return final_score, [self.elbo_running_mean[k].val for k in range(5)], n_active
         else:
             return final_score

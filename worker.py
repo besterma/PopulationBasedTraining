@@ -90,11 +90,10 @@ class Worker(mp.Process):
             trainer.set_id(task['id'])
             trainer.train(self.epoch.value)
             trainer.dataset = TorchIterableDataset(self.dataset_iterator, self.score_random_state)
-            score, mig, accuracy, elbo, active_units, n_active, elbo_dict = trainer.eval(epoch=self.epoch.value,
-                                                                                         final=True)
+            score, elbo, n_active = trainer.eval(epoch=self.epoch.value, final=True)
             trainer.save_checkpoint(checkpoint_path, self.get_rng_states())
-            self.finish_tasks.put(dict(id=task['id'], score=score, mig=mig, accuracy=accuracy,
-                                       elbo=elbo, active_units=active_units, n_active=n_active,
+            self.finish_tasks.put(dict(id=task['id'], score=score, mig=0, accuracy=0,
+                                       elbo=elbo, active_units=[], n_active=n_active,
                                        random_states=self.get_rng_states()))
             print("Worker", self.worker_id, "finished task", task['id'])
             trainer.release_memory()
@@ -105,6 +104,7 @@ class Worker(mp.Process):
             return -1
 
         except ValueError as err:
+            print("Worker", self.worker_id, "Task", task['id'],",", err)
             nr_value_errors = task.get('nr_value_errors', 0)
             nr_value_errors += 1
 
@@ -139,7 +139,7 @@ class Worker(mp.Process):
             torch.cuda.empty_cache()
             return 0
 
-        except RuntimeError as err:
+        except ZeroDivisionError as err:
             print("Worker", self.worker_id, "Runtime Error:", err)
             if trainer is not None:
                 trainer.release_memory()

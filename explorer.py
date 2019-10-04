@@ -83,7 +83,7 @@ class Explorer(mp.Process):
             try:
                 self.exportScores(tasks=tasks)
                 self.exportBestModel(best_model_path)
-                self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
+                #self.latent_variable_plotter.plotLatentBestModel(best_model_path, self.epoch.value, tasks[0]['id'])
                 self.saveModelParameters(tasks=tasks)
                 self.exportBestModelParameters(best_model_path, tasks[0])
 
