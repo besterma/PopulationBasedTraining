@@ -8,7 +8,6 @@ import gin
 import vae_trainer
 import utils
 from torch.optim import Adam
-from utils import TorchIterableDataset
 
 mp = _mp.get_context('spawn')
 
@@ -45,8 +44,9 @@ class Worker(mp.Process):
         print('starting worker')
         gin.external_configurable(Adam, module='torch')
         gin.parse_config(self.gin_config)
-        print(gin.query_parameter('vae_trainer.UdrVaeTrainer.model_class'))
+        # print(gin.query_parameter('vae_trainer.UdrVaeTrainer.model_class'))
         os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
+        # os.environ['CUDA_VISIBLE_DEVICES'] = str(2) # for debugging purposes
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         with torch.cuda.device(0):
@@ -75,6 +75,7 @@ class Worker(mp.Process):
             checkpoint_path = os.path.join(self.model_dir, "checkpoints/task-%03d.pth" % task['id'])
             self.set_rng_states(task["random_states"])
 
+            trainer = None
             trainer = self.trainer_class(device=0,
                                          dataset=None,
                                          random_state=self.random_state,
@@ -84,13 +85,13 @@ class Worker(mp.Process):
                 random_states = trainer.load_checkpoint(checkpoint_path)
                 self.set_rng_states(random_states)
 
-            trainer.dataset = TorchIterableDataset(self.dataset_iterator, self.random_state.randint(2**32))
 
             # Train
             trainer.set_id(task['id'])
-            trainer.train(self.epoch.value)
-            trainer.dataset = TorchIterableDataset(self.dataset_iterator, self.score_random_state)
-            score, elbo, n_active = trainer.eval(epoch=self.epoch.value, final=True)
+            trainer.train(self.epoch.value, self.dataset_iterator, self.random_state.randint(2**32))
+            score, elbo, n_active = trainer.eval(epoch=self.epoch.value, final=True,
+                                                 dataset_iterator=self.dataset_iterator,
+                                                 random_seed=self.score_random_state)
             trainer.save_checkpoint(checkpoint_path, self.get_rng_states())
             self.finish_tasks.put(dict(id=task['id'], score=score, mig=0, accuracy=0,
                                        elbo=elbo, active_units=[], n_active=n_active,
@@ -139,7 +140,7 @@ class Worker(mp.Process):
             torch.cuda.empty_cache()
             return 0
 
-        except ZeroDivisionError as err:
+        except RuntimeError as err:
             print("Worker", self.worker_id, "Runtime Error:", err)
             if trainer is not None:
                 trainer.release_memory()

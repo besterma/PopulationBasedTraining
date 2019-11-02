@@ -48,8 +48,6 @@ class Explorer(mp.Process):
 
         self.set_rng_states(random_states)
         self.dataset_iterator = TorchIterableDataset(dataset, self.random_state.randint(2**32))
-        self.latent_variable_plotter = LatentVariablePlotter(0, self.dataset_iterator, self.random_state,
-                                                             self.trainer_class, model_dir)
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
@@ -107,15 +105,25 @@ class Explorer(mp.Process):
             with self.epoch.get_lock():
                 self.epoch.value += 1
                 print("New epoch: ", self.epoch.value)
+            if self.epoch.value > self.max_epoch:
+                trainer = self.trainer_class(device=0,
+                                             dataset=None,
+                                             random_state=self.random_state,
+                                             score_random_state=7)
+                trainer.load_checkpoint(best_model_path)
+                trainer.export_best_model(os.path.join(self.model_dir,
+                                                       "bestmodels/model.pth"),
+                                          dataset=self.dataset_iterator)
+
             for task in tasks:
                 score = task.get('score', -1)
                 mig = task.get('mig', -1)
-                elbo = task.get('elbo', [])
-                active_units = task.get('active_units', [])
                 n_active = task.get('n_active', -1)
                 print("Put task", task['id'], "in queue with score", score,
                       "mig", mig,
                       "n_active", n_active)
+                if self.epoch.value > self.max_epoch:
+                    task = {'id': task['id'], 'score': task['score'], 'mig': task['mig']}
                 self.population.put(task)
 
             torch.cuda.empty_cache()

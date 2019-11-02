@@ -13,11 +13,11 @@ import gin
 import os
 import sys
 import utils
-from vae_trainer import UdrVaeTrainer
+from vae_trainer import UdrVaeTrainer, VaeTrainer
 
 sys.path.append('../beta-tcvae')
-from vae_quant import VAE, UDRVAE
-import lib.dist as dist
+#from vae_quant import VAE, UDRVAE
+#import lib.dist as dist
 
 mp = _mp.get_context('spawn')
 
@@ -44,7 +44,7 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     random_seed = random_seed
 
     init_random_state(random_seed)
-    torch_limited_labels_rng_state = np.random.randint(2**32)
+    torch_limited_labels_rng_seed = np.random.randint(2**32)
 
     if dataset is None:
         with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
@@ -52,7 +52,7 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
 
     pathlib.Path(os.path.join(model_dir, 'checkpoints')).mkdir(parents=True, exist_ok=True)
     pathlib.Path(os.path.join(model_dir, 'bestmodels')).mkdir(parents=True, exist_ok=True)
-    pathlib.Path(os.path.join(model_dir, 'latentVariables')).mkdir(parents=True, exist_ok=True)
+    # pathlib.Path(os.path.join(model_dir, 'latentVariables')).mkdir(parents=True, exist_ok=True)
     pathlib.Path(os.path.join(model_dir, 'parameters')).mkdir(parents=True, exist_ok=True)
 
     checkpoint_str = "checkpoints/task-%03d.pth"
@@ -71,17 +71,24 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
                             random_states=generate_random_states()))
     train_data_path = test_data_path = './data'
     print("Create workers")
+    if str(gin.query_parameter("worker.trainer_class")) == "@vae_trainer.VaeTrainer":
+        trainer_class = VaeTrainer
+    elif str(gin.query_parameter("worker.trainer_class")) == "@vae_trainer.UdrVaeTrainer":
+        trainer_class = UdrVaeTrainer
+    else:
+        trainer_class = VaeTrainer
+
     workers = [Worker(population, finish_tasks, device, i, dataset, gin_string=gin.config_str(), model_dir=model_dir,
-                      score_random_state=torch_limited_labels_rng_state, start_epoch=epoch, trainer_class=UdrVaeTrainer)
+                      score_random_state=torch_limited_labels_rng_seed, start_epoch=epoch, trainer_class=trainer_class)
                for i in range(worker_size)]
     workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, dataset, generate_random_states(),
                             model_dir=model_dir, gin_string=gin.config_str(), start_epoch=epoch,
-                            trainer_class=UdrVaeTrainer))
+                            trainer_class=trainer_class))
     print("Start workers")
     [w.start() for w in workers]
     print("Wait for workers to finish")
     [w.join() for w in workers]
-    print("Workers finished")
+    print("Workers and Explorer finished")
     task = []
     time.sleep(1)
     while not finish_tasks.empty():
@@ -92,7 +99,20 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     end = time.time()
     print('Total execution time:', end-start)
-    return task[0]['id'], task[0]['score'], task[0]['mig']
+    try:
+        if str(gin.query_parameter("worker.trainer_class")) == "@vae_trainer.VaeTrainer":
+            score_name = str(gin.query_parameter("vae_trainer.VaeTrainer.eval_function"))
+        elif str(gin.query_parameter("worker.trainer_class")) == "@vae_trainer.UdrVaeTrainer":
+            score_name = "udr_score"
+        if score_name[0] == '@':
+            score_name = score_name[1:]
+    except ValueError:
+        print("score name not found from config file, using default")
+        score_name = 'score'
+
+
+    score_dict = {score_name: task[0]['score'], 'mig': task[0]['mig']}
+    return task[0]['id'], score_dict
 
 
 def generate_random_states():

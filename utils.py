@@ -5,7 +5,7 @@ import gin
 
 @gin.configurable(blacklist=['random_state'])
 def get_init_batch_size(random_state):
-    return int(random_state.choice(np.logspace(3, 10, base=2, dtype=int, num=8))) # 8 - 2048
+    return int(random_state.choice(np.logspace(3, 10, base=2, dtype=int, num=8))) # 8 - 1024
 
 
 @gin.configurable(blacklist=['random_state'])
@@ -17,6 +17,19 @@ def get_init_lr(random_state):
 def get_init_beta(random_state):
     return int(random_state.choice(np.logspace(1, 15, base=1.5, num=24, dtype=int)[1:]))
     # [1:] because else we would have 1 double
+
+
+@gin.configurable(whitelist=['ratio'])
+def mig_nmig_combination(score_dict, ratio=gin.REQUIRED):
+    mig = score_dict.get("discrete_mig", .0)
+    nmig = score_dict.get("discrete_mig", .0)
+    return np.sum([ratio*mig, (1-ratio) * nmig])
+
+
+@gin.configurable(blacklist=['mig', 'nmig'])
+def mig_nmig_only(mig, nmig):
+    return np.mean(mig, nmig)
+
 
 
 class TorchIterableDataset(torch.utils.data.IterableDataset):
