@@ -39,7 +39,7 @@ class TorchIterableDataset(torch.utils.data.IterableDataset):
     def __iter__(self):
         while True:
             x = self.ground_truth_data.sample_observations(1, self.random_state)[0]
-            yield np.moveaxis(x, 3, 1)
+            yield np.moveaxis(x, 2, 0)
 
     def __len__(self):
         return np.prod(self.ground_truth_data.factors_num_values)
