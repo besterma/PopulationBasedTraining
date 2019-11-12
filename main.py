@@ -22,14 +22,14 @@ sys.path.append('../beta-tcvae')
 mp = _mp.get_context('spawn')
 
 
-@gin.configurable(blacklist=['dataset'])
+@gin.configurable()
 def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_epoch=0,
-             existing_parameter_dict=None, random_seed=7, dataset=None):
+             existing_parameter_dict=None, random_seed=7):
     print("Lets go!")
     start = time.time()
 
     # mp.set_start_method("spawn")
-    mp = _mp.get_context('forkserver') # Maybe doesnt work
+    #mp = _mp.get_context('forkserver') # Maybe doesnt work
     if not torch.cuda.is_available() and device != 'cpu':
         print("Cuda not available, switching to cpu")
         device = 'cpu'
@@ -46,9 +46,6 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     init_random_state(random_seed)
     torch_limited_labels_rng_seed = np.random.randint(2**32)
 
-    if dataset is None:
-        with np.load('data/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz', encoding='latin1') as dataset_zip:
-            dataset = torch.from_numpy(dataset_zip['imgs']).float()
 
     pathlib.Path(os.path.join(model_dir, 'checkpoints')).mkdir(parents=True, exist_ok=True)
     pathlib.Path(os.path.join(model_dir, 'bestmodels')).mkdir(parents=True, exist_ok=True)
@@ -78,10 +75,10 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     else:
         trainer_class = VaeTrainer
 
-    workers = [Worker(population, finish_tasks, device, i, dataset, gin_string=gin.config_str(), model_dir=model_dir,
+    workers = [Worker(population, finish_tasks, device, i, gin_string=gin.config_str(), model_dir=model_dir,
                       score_random_state=torch_limited_labels_rng_seed, start_epoch=epoch, trainer_class=trainer_class)
                for i in range(worker_size)]
-    workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, dataset, generate_random_states(),
+    workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, generate_random_states(),
                             model_dir=model_dir, gin_string=gin.config_str(), start_epoch=epoch,
                             trainer_class=trainer_class))
     print("Start workers")

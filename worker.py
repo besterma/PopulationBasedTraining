@@ -9,12 +9,17 @@ import vae_trainer
 import utils
 from torch.optim import Adam
 
+import sys
+sys.path.append("../disentanglement_lib/disentanglement_lib")
+from disentanglement_lib.data.ground_truth import named_data
+
+
 mp = _mp.get_context('spawn')
 
 
 @gin.configurable('worker', whitelist=['max_epoch', 'trainer_class'])
 class Worker(mp.Process):
-    def __init__(self, population, finish_tasks, device, worker_id, dataset, start_epoch, gin_string, model_dir,
+    def __init__(self, population, finish_tasks, device, worker_id, start_epoch, gin_string, model_dir,
                  max_epoch=gin.REQUIRED, trainer_class=gin.REQUIRED, score_random_state=None):
         super().__init__()
         print("Init Worker")
@@ -22,7 +27,7 @@ class Worker(mp.Process):
         self.max_epoch = max_epoch
         self.population = population
         self.finish_tasks = finish_tasks
-        self.dataset_iterator = dataset
+        self.dataset_iterator = None
         self.worker_id = worker_id
         self.score_random_state = score_random_state
         self.random_state = np.random.RandomState()
@@ -46,10 +51,11 @@ class Worker(mp.Process):
         gin.parse_config(self.gin_config)
         # print(gin.query_parameter('vae_trainer.UdrVaeTrainer.model_class'))
         os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
-        # os.environ['CUDA_VISIBLE_DEVICES'] = str(2) # for debugging purposes
+        #os.environ['CUDA_VISIBLE_DEVICES'] = str(2) # for debugging purposes
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         with torch.cuda.device(0):
+            self.dataset_iterator = named_data.get_named_ground_truth_data()
             while True:
                 status = self.main_loop()
                 if status != 0:

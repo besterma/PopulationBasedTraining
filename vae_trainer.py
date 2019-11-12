@@ -10,12 +10,15 @@ import gin
 from utils import TorchIterableDataset
 sys.path.append('/home/besterma/ETH/Semester_Thesis/Python/beta-tcvae')
 sys.path.append('/home/disentanglement/Python/beta-tcvae')
+sys.path.append('/home/disentanglement/Python/disentanglement_lib')
 import lib.utils as utils
 import lib.datasets as dset
 from disentanglement_metrics import metrics_shapes
 from udr_metric import udr_metric
 from elbo_decomposition import elbo_decomposition
 
+from disentanglement_lib.evaluation.metrics.nmig import compute_nmig
+from disentanglement_lib.evaluation.metrics.dci import compute_dci
 
 class Trainer(object):
     """Abstract class for trainers."""
@@ -383,6 +386,7 @@ class VaeTrainer(Trainer):
         random_state = np.random.RandomState(random_seed)
         def _representation_function(x):
             """Computes representation vector for input images."""
+            x = np.moveaxis(x, 3, 1)
             x = torch.from_numpy(x).to(0)
             zs, zs_params = self.model.encode(x)
 
@@ -400,6 +404,11 @@ class VaeTrainer(Trainer):
         score_dict['final_score'] = final_score
         score_dict['elbo'] = self.elbo_running_mean.val
         score_dict['epoch'] = epoch
+        metrics = ['compute_nmig, compute_dci']
+        for metric in [compute_nmig, compute_dci]:
+            metric_dict = metric(dataset_iterator,_representation_function,random_state)
+            for el in metric_dict.keys():
+                score_dict[el] = metric_dict[el]
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
               self.elbo_running_mean.val, "and Score", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")

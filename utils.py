@@ -31,7 +31,6 @@ def mig_nmig_only(mig, nmig):
     return np.mean(mig, nmig)
 
 
-
 class TorchIterableDataset(torch.utils.data.IterableDataset):
     def __init__(self, ground_truth_data, random_seed):
         self.random_state = np.random.RandomState(random_seed)
@@ -39,10 +38,11 @@ class TorchIterableDataset(torch.utils.data.IterableDataset):
 
     def __iter__(self):
         while True:
-            yield self.ground_truth_data.sample_observations(1, self.random_state)[0]
+            x = self.ground_truth_data.sample_observations(1, self.random_state)[0]
+            yield np.moveaxis(x, 3, 1)
 
     def __len__(self):
-        return np.prod(self.ground_truth_data.factor_sizes)
+        return np.prod(self.ground_truth_data.factors_num_values)
 
 
 """

@@ -13,8 +13,9 @@ import utils
 from torch.optim import Adam
 from utils import TorchIterableDataset
 
-sys.path.append('../beta-tcvae')
-from plot_latent_vs_true import plot_vs_gt_shapes
+import sys
+sys.path.append("../disentanglement_lib/disentanglement_lib")
+from disentanglement_lib.data.ground_truth import named_data
 
 mp = _mp.get_context('spawn')
 
@@ -22,7 +23,7 @@ mp = _mp.get_context('spawn')
 @gin.configurable('explorer',
                   whitelist=['start_epoch', 'max_epoch', 'trainer_class', 'exploit_and_explore_func', 'cutoff'])
 class Explorer(mp.Process):
-    def __init__(self, population, finish_tasks, device_id, result_dict, dataset, random_states, start_epoch, gin_string,
+    def __init__(self, population, finish_tasks, device_id, result_dict, random_states, start_epoch, gin_string,
                  model_dir, max_epoch=gin.REQUIRED, exploit_and_explore_func=gin.REQUIRED,
                  trainer_class=gin.REQUIRED, cutoff=0.2):
         print("Init Explorer")
@@ -47,7 +48,7 @@ class Explorer(mp.Process):
             self.result_dict['parameters'] = dict()
 
         self.set_rng_states(random_states)
-        self.dataset_iterator = TorchIterableDataset(dataset, self.random_state.randint(2**32))
+        self.dataset_iterator = None
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
@@ -55,6 +56,8 @@ class Explorer(mp.Process):
         gin.parse_config(self.gin_config)
         os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
         with torch.cuda.device(0):
+            dataset = named_data.get_named_ground_truth_data()
+            self.dataset_iterator = TorchIterableDataset(dataset, self.random_state.randint(2**32))
             self.epoch_start_time = time.time()
             while True:
                 status = self.main_loop()
@@ -203,18 +206,3 @@ class LatentVariablePlotter(object):
                                      random_state=self.random_state)
         return trainer
 
-    @torch.no_grad()
-    def plotLatentBestModel(self, top_checkpoint_name, epoch, task_id):
-        with torch.cuda.device(self.device_id):
-            print("Plot latents of best model")
-            trainer = self.get_trainer()
-            trainer.load_checkpoint(top_checkpoint_name)
-            for i, model in enumerate(trainer.model.children()):
-                plot_vs_gt_shapes(model, self.dataset,
-                                  os.path.join(self.model_dir,
-                                               "latentVariables/"
-                                               "best_epoch_{:03d}_task_{:03d}_model_{:03d}.png".format(epoch,
-                                                                                                       task_id, i)),
-                                  range(trainer.model.z_dim), self.device_id)
-            del trainer
-            torch.cuda.empty_cache()
