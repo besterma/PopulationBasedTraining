@@ -200,7 +200,7 @@ class UdrVaeTrainer(Trainer):
                     if self.model.nan_in_objective(obj):
                         raise ValueError('NaN spotted in objective.')
                     self.model.backward(obj)
-                    [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(5)]
+                    [self.elbo_running_mean[k].update(obj[k][1].mean().item()) for k in range(self.model.num_models)]
                     self.optimizer.step()
 
         self.optimizer.zero_grad()
@@ -213,7 +213,7 @@ class UdrVaeTrainer(Trainer):
     def eval(self, epoch=0, dataset_iterator=None, random_seed=7, final=False):
         self.dataset = TorchIterableDataset(dataset_iterator, random_seed)
         self.model.eval()
-        print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(5)])
+        print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(self.model.num_models)])
         start = time.time()
         udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', 128,
                                          self.device)
@@ -223,11 +223,11 @@ class UdrVaeTrainer(Trainer):
         score_dict['elbo'] = [self.elbo_running_mean[k].val for k in range(self.model.num_models)]
         self.scores[epoch] = score_dict
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              [self.elbo_running_mean[k].val for k in range(5)], "and UDR", udr_score)
+              [self.elbo_running_mean[k].val for k in range(self.model.num_models)], "and UDR", udr_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
 
         if final:
-            return final_score, [self.elbo_running_mean[k].val for k in range(5)], n_active
+            return final_score, [self.elbo_running_mean[k].val for k in range(self.model.num_models)], n_active
         else:
             return final_score
 
