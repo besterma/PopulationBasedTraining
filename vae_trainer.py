@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from torch.autograd import Variable
 import time
 from deprecated import deprecated
+from functools import partial
 
 import sys
 import gin
@@ -19,6 +20,7 @@ from elbo_decomposition import elbo_decomposition
 
 from disentanglement_lib.evaluation.metrics.nmig import compute_nmig
 from disentanglement_lib.evaluation.metrics.dci import compute_dci
+from disentanglement_lib.evaluation.udr.metrics.udr import compute_udr_sklearn as compute_udr
 
 class Trainer(object):
     """Abstract class for trainers."""
@@ -45,11 +47,11 @@ class Trainer(object):
         raise NotImplementedError()
 
 
-@gin.configurable(blacklist=['score_random_state', 'random_state', 'dataset', 'device'])
+@gin.configurable(blacklist=['score_random_seed', 'random_state', 'dataset', 'device'])
 class UdrVaeTrainer(Trainer):
     def __init__(self, model_class, optimizer_class, device=None,
                  hyper_params=None, dataset=None, mig_active_factors=None, is_test_run=False,
-                 score_random_state=None, score_num_labels=None, random_state=None, epoch_train_steps=737280,
+                 score_random_seed=None, score_num_labels=None, random_state=None, epoch_train_steps=737280,
                  batch_size=None, batch_size_init_function=None,
                  beta=None, beta_init_function=None,
                  lr=None, lr_init_function=None):
@@ -72,7 +74,7 @@ class UdrVaeTrainer(Trainer):
         self.hyper_params = hyper_params
         self.dataset = dataset
         self.mig_active_factors = np.array(mig_active_factors) if mig_active_factors is not None else np.array([0, 1, 2, 3])
-        self.score_random_state = score_random_state
+        self.score_random_seed = score_random_seed
         self.score_num_labels = score_num_labels
         self.epoch_train_steps = epoch_train_steps
         self.is_test_run = is_test_run
@@ -116,17 +118,29 @@ class UdrVaeTrainer(Trainer):
         :type checkpoint_path: string
         :type dataset: ground_truth_data.GroundTruthData
         """
-        print(self.task_id, "trying to export best model")
-        udr_scores, _ = udr_metric(models=self.model,
-                                   dataset=dataset,
-                                   corr_function='mi',
-                                   batch_size=128,
-                                   device=self.device,
-                                   summarize_results=False)
-        print(udr_scores)
-        udr_scores = udr_scores[~np.eye(udr_scores.shape[0], dtype=bool)].reshape(udr_scores.shape[0], -1)
-        print(udr_scores)
-        best_model_id = np.argmax(np.median(udr_scores, axis=1))
+        print(self.task_id, "exporting best model")
+        self.model.eval()
+        random_state = np.random.RandomState(self.score_random_seed)
+        representation_functions = []
+        models = list(self.model.children())
+        for model in models:
+            model.eval()
+
+            def _representation_function(x, model):
+                """Computes representation vector for input images."""
+                x = np.moveaxis(x, 3, 1)
+                x = torch.from_numpy(x).to(0)
+                zs, zs_params = model.encode(x)
+
+                means = zs_params[:, :, 0].cpu().detach().numpy()
+                kl_divs = np.abs(zs_params[:, :, 1].cpu().detach().numpy().mean(axis=0))
+
+                return means, kl_divs  # mean
+                # return zs.cpu().numpy()                # if we want a sample from the distribution
+            representation_functions.append(partial(_representation_function, model=model))
+
+        udr_score_dict = compute_udr(dataset, representation_functions, random_state)
+        best_model_id = np.argmax(udr_score_dict['model_scores'])
 
         for name, module in self.model.named_children():
             if name == str(best_model_id):
@@ -211,32 +225,54 @@ class UdrVaeTrainer(Trainer):
 
     @torch.no_grad()
     def eval(self, epoch=0, dataset_iterator=None, random_seed=7, final=False):
-        self.dataset = TorchIterableDataset(dataset_iterator, random_seed)
         self.model.eval()
+        random_state = np.random.RandomState(random_seed)
         print(self.task_id, "Evaluate Model with B", self.model.beta, "and running_mean elbo", [self.elbo_running_mean[k].val for k in range(self.model.num_models)])
         start = time.time()
-        udr_score, n_active = udr_metric(self.model, self.dataset, 'mi', 128,
-                                         self.device)
+        representation_functions = []
+        models = list(self.model.children())
+        for model in models:
+            model.eval()
+            def _representation_function(x, model):
+                """Computes representation vector for input images."""
+                x = np.moveaxis(x, 3, 1)
+                x = torch.from_numpy(x).to(0)
+                zs, zs_params = model.encode(x)
 
-        final_score = udr_score
-        score_dict = dict(final_score=udr_score, udr_score=udr_score, n_active=n_active, epoch=epoch)
+                means = zs_params[:, :, 0].cpu().detach().numpy()
+                kl_divs = np.abs(zs_params[:, :, 1].cpu().detach().numpy().mean(axis=0))
+
+                return means, kl_divs  # mean
+                # return zs.cpu().numpy()                # if we want a sample from the distribution
+            representation_functions.append(partial(_representation_function, model=model))
+        udr_score_dict = compute_udr(dataset_iterator, representation_functions, random_state)
+        #TODO: include batch_size, num_data_points etc in GIN
+
+        final_score = np.mean(udr_score_dict['model_scores'])
+        score_dict = dict(final_score=final_score, udr_score=udr_score_dict, n_active=0, epoch=epoch)
         score_dict['elbo'] = [self.elbo_running_mean[k].val for k in range(self.model.num_models)]
+        score_dict['epoch'] = epoch
+        for metric in [compute_nmig]:
+            for i in range(len(representation_functions)):
+                metric_dict = metric(dataset_iterator, lambda x: representation_functions[i](x)[0], random_state)
+                for el in metric_dict.keys():
+                    score_dict["model_" + str(i) + "_" + el] = metric_dict[el]
         self.scores[epoch] = score_dict
         print(self.task_id, "Model with B", self.model.beta, "and running_mean elbo",
-              [self.elbo_running_mean[k].val for k in range(self.model.num_models)], "and UDR", udr_score)
+              [self.elbo_running_mean[k].val for k in range(self.model.num_models)], "and UDR", final_score)
         print(self.task_id, "Eval took", time.time() - start, "seconds")
 
         if final:
-            return final_score, [self.elbo_running_mean[k].val for k in range(self.model.num_models)], n_active
+            return final_score, [self.elbo_running_mean[k].val for k in range(self.model.num_models)], 0
         else:
             return final_score
 
 
-@gin.configurable(blacklist=['score_random_state', 'random_state', 'dataset', 'device'])
+@gin.configurable(blacklist=['score_random_seed', 'random_state', 'dataset', 'device'])
 class VaeTrainer(Trainer):
     def __init__(self, model_class, optimizer_class, device=None, eval_function=None, eval_combine_function=None,
                  hyper_params=None, dataset=None, mig_active_factors=None, is_test_run=False,
-                 score_random_state=None, score_num_labels=None, random_state=None, epoch_train_steps=737280,
+                 score_random_seed=None, score_num_labels=None, random_state=None, epoch_train_steps=737280,
                  batch_size=None, batch_size_init_function=None,
                  beta=None, beta_init_function=None,
                  lr=None, lr_init_function=None):
@@ -259,7 +295,7 @@ class VaeTrainer(Trainer):
         self.hyper_params = hyper_params
         self.dataset = dataset
         self.mig_active_factors = np.array(mig_active_factors) if mig_active_factors is not None else np.array([0, 1, 2, 3])
-        self.score_random_state = score_random_state
+        self.score_random_seed = score_random_seed
         self.score_num_labels = score_num_labels
         self.epoch_train_steps = epoch_train_steps
         self.is_test_run = is_test_run

@@ -20,7 +20,7 @@ mp = _mp.get_context('spawn')
 @gin.configurable('worker', whitelist=['max_epoch', 'trainer_class'])
 class Worker(mp.Process):
     def __init__(self, population, finish_tasks, device, worker_id, start_epoch, gin_string, model_dir,
-                 max_epoch=gin.REQUIRED, trainer_class=gin.REQUIRED, score_random_state=None):
+                 max_epoch=gin.REQUIRED, trainer_class=gin.REQUIRED, score_random_seed=None):
         super().__init__()
         print("Init Worker")
         self.epoch = start_epoch
@@ -29,7 +29,7 @@ class Worker(mp.Process):
         self.finish_tasks = finish_tasks
         self.dataset_iterator = None
         self.worker_id = worker_id
-        self.score_random_state = score_random_state
+        self.score_random_seed = score_random_seed
         self.random_state = np.random.RandomState()
         self.trainer_class = trainer_class
         self.gin_config = gin_string
@@ -38,8 +38,8 @@ class Worker(mp.Process):
         np.random.seed(worker_id)
         if device != 'cpu':
             if torch.cuda.device_count() > 1:
-                # self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
-                self.device_id = worker_id % torch.cuda.device_count()
+                self.device_id = (worker_id) % (torch.cuda.device_count() - 1) + 1 #-1 because we dont want to use card #0 as it is weaker
+                #self.device_id = worker_id % torch.cuda.device_count()
             else:
                 self.device_id = 0
         else:
@@ -84,8 +84,7 @@ class Worker(mp.Process):
             trainer = None
             trainer = self.trainer_class(device=0,
                                          dataset=None,
-                                         random_state=self.random_state,
-                                         score_random_state=self.score_random_state)
+                                         random_state=self.random_state)
             trainer.set_id(task['id'])  # double on purpose to have right id as early as possible (for logging)
             if os.path.isfile(checkpoint_path):
                 random_states = trainer.load_checkpoint(checkpoint_path)
@@ -97,7 +96,7 @@ class Worker(mp.Process):
             trainer.train(self.epoch.value, self.dataset_iterator, self.random_state.randint(2**32))
             score, elbo, n_active = trainer.eval(epoch=self.epoch.value, final=True,
                                                  dataset_iterator=self.dataset_iterator,
-                                                 random_seed=self.score_random_state)
+                                                 random_seed=self.score_random_seed)
             trainer.save_checkpoint(checkpoint_path, self.get_rng_states())
             self.finish_tasks.put(dict(id=task['id'], score=score, mig=0, accuracy=0,
                                        elbo=elbo, active_units=[], n_active=n_active,

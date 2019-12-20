@@ -49,6 +49,7 @@ class Explorer(mp.Process):
 
         self.set_rng_states(random_states)
         self.dataset_iterator = None
+        self.dataset = None
 
     def run(self):
         print("Running in loop of explorer in epoch ", self.epoch.value, "on gpu", self.device_id)
@@ -56,8 +57,8 @@ class Explorer(mp.Process):
         gin.parse_config(self.gin_config)
         os.environ['CUDA_VISIBLE_DEVICES'] = str(self.device_id)
         with torch.cuda.device(0):
-            dataset = named_data.get_named_ground_truth_data()
-            self.dataset_iterator = TorchIterableDataset(dataset, self.random_state.randint(2**32))
+            self.dataset = named_data.get_named_ground_truth_data()
+            self.dataset_iterator = TorchIterableDataset(self.dataset, self.random_state.randint(2**32)) # obsolete?
             self.epoch_start_time = time.time()
             while True:
                 status = self.main_loop()
@@ -112,11 +113,11 @@ class Explorer(mp.Process):
                 trainer = self.trainer_class(device=0,
                                              dataset=None,
                                              random_state=self.random_state,
-                                             score_random_state=7)
+                                             score_random_seed=7)
                 trainer.load_checkpoint(best_model_path)
                 trainer.export_best_model(os.path.join(self.model_dir,
                                                        "bestmodels/model.pth"),
-                                          dataset=self.dataset_iterator)
+                                          dataset=self.dataset)
 
             for task in tasks:
                 score = task.get('score', -1)
@@ -142,7 +143,7 @@ class Explorer(mp.Process):
 
     def exportScores(self, tasks):
         print("Explorer export scores")
-        with open('scores.txt', 'a+') as f:
+        with open(os.path.join(self.model_dir, 'parameters/scores.txt'), 'a+') as f:
             f.write(str(self.epoch.value) + '. Epoch Scores:')
             for task in tasks:
                 f.write('\n\tId: ' + str(task['id']) + ' - Score: ' + str(task['score']))

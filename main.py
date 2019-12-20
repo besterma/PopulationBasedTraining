@@ -44,7 +44,7 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     random_seed = random_seed
 
     init_random_state(random_seed)
-    torch_limited_labels_rng_seed = np.random.randint(2**32)
+    score_random_seed = np.random.randint(2**32)
 
 
     pathlib.Path(os.path.join(model_dir, 'checkpoints')).mkdir(parents=True, exist_ok=True)
@@ -76,7 +76,7 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
         trainer_class = VaeTrainer
 
     workers = [Worker(population, finish_tasks, device, i, gin_string=gin.config_str(), model_dir=model_dir,
-                      score_random_state=torch_limited_labels_rng_seed, start_epoch=epoch, trainer_class=trainer_class)
+                      score_random_seed=score_random_seed, start_epoch=epoch, trainer_class=trainer_class)
                for i in range(worker_size)]
     workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, generate_random_states(),
                             model_dir=model_dir, gin_string=gin.config_str(), start_epoch=epoch,
