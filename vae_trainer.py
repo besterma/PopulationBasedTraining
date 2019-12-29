@@ -240,9 +240,14 @@ class UdrVaeTrainer(Trainer):
                 zs, zs_params = model.encode(x)
 
                 means = zs_params[:, :, 0].cpu().detach().numpy()
-                kl_divs = np.abs(zs_params[:, :, 1].cpu().detach().numpy().mean(axis=0))
 
-                return means, kl_divs  # mean
+                def compute_gaussian_kl(z_mean, z_logvar):
+                    return np.mean(
+                        0.5 * (np.square(z_mean) + np.exp(z_logvar) - z_logvar - 1),
+                        axis=0)
+                logvars = np.abs(zs_params[:, :, 1].cpu().detach().numpy().mean(axis=0))
+
+                return means, compute_gaussian_kl(means, logvars)  # mean
                 # return zs.cpu().numpy()                # if we want a sample from the distribution
             representation_functions.append(partial(_representation_function, model=model))
         udr_score_dict = compute_udr(dataset_iterator, representation_functions, random_state)
