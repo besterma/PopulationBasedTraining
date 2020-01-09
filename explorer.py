@@ -16,6 +16,7 @@ from utils import TorchIterableDataset
 import sys
 sys.path.append("../disentanglement_lib/disentanglement_lib")
 from disentanglement_lib.data.ground_truth import named_data
+from disentanglement_lib.evaluation.udr.metrics.udr import compute_udr_sklearn as compute_udr
 
 mp = _mp.get_context('spawn')
 
@@ -77,6 +78,23 @@ class Explorer(mp.Process):
             tasks = []
             while not self.finish_tasks.empty():
                 tasks.append(self.finish_tasks.get())
+
+            #compute scores
+            representation_functions = []
+            tasks = sorted(tasks, key=lambda x: x['id'])
+            for task in tasks:
+                trainer = self.trainer_class(device=0,
+                                             dataset=None,
+                                             random_state=self.random_state,
+                                             score_random_seed=7)
+                trainer.load_checkpoint("checkpoints/task-%03d.pth" % task['id'])
+                representation_functions.append(trainer.generate_udr_repr_function())
+            udr_score_dict = compute_udr(self.dataset, representation_functions, self.random_state)
+
+            for i, task in enumerate(tasks):
+                task['score'] = udr_score_dict['model_scores'][i]
+
+
             tasks = sorted(tasks, key=lambda x: x['score'], reverse=True)
             print("Total #tasks:", len(tasks))
             print('Best score on', tasks[0]['id'], 'is', tasks[0]['score'])

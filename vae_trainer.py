@@ -120,7 +120,10 @@ class UdrVaeTrainer(Trainer):
         """
         print(self.task_id, "exporting best model")
         self.model.eval()
-        random_state = np.random.RandomState(self.score_random_seed)
+        if self.score_random_seed is None:
+            random_state = np.random.RandomState(0)
+        else:
+            random_state = np.random.RandomState(self.score_random_seed)
         representation_functions = []
         models = list(self.model.children())
         for model in models:
@@ -355,6 +358,29 @@ class VaeTrainer(Trainer):
                           scores=self.scores)
         torch.save(checkpoint, checkpoint_path)
         print(self.task_id, "finished exporting best model")
+
+    def generate_udr_repr_function(self):
+        self.model.eval()
+
+        def _representation_function(x, model):
+            """Computes representation vector for input images."""
+            x = np.moveaxis(x, 3, 1)
+            x = torch.from_numpy(x).to(0)
+            zs, zs_params = model.encode(x)
+
+            means = zs_params[:, :, 0].cpu().detach().numpy()
+
+            def compute_gaussian_kl(z_mean, z_logvar):
+                return np.mean(
+                    0.5 * (np.square(z_mean) + np.exp(z_logvar) - z_logvar - 1),
+                    axis=0)
+
+            logvars = np.abs(zs_params[:, :, 1].cpu().detach().numpy().mean(axis=0))
+
+            return means, compute_gaussian_kl(means, logvars)  # mean
+            # return zs.cpu().numpy()                # if we want a sample from the distribution
+
+        return partial(_representation_function, model=self.model)
 
     def save_training_params(self, epoch):
         param_dict = dict(epoch=epoch)

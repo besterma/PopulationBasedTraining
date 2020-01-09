@@ -94,9 +94,7 @@ class Worker(mp.Process):
             # Train
             trainer.set_id(task['id'])
             trainer.train(self.epoch.value, self.dataset_iterator, self.random_state.randint(2**32))
-            score, elbo, n_active = trainer.eval(epoch=self.epoch.value, final=True,
-                                                 dataset_iterator=self.dataset_iterator,
-                                                 random_seed=self.score_random_seed)
+            score = elbo = n_active = np.nan
             trainer.save_checkpoint(checkpoint_path, self.get_rng_states())
             self.finish_tasks.put(dict(id=task['id'], score=score, mig=0, accuracy=0,
                                        elbo=elbo, active_units=[], n_active=n_active,
