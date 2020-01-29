@@ -87,9 +87,18 @@ class Explorer(mp.Process):
                                              dataset=None,
                                              random_state=self.random_state,
                                              score_random_seed=7)
-                trainer.load_checkpoint("checkpoints/task-%03d.pth" % task['id'])
+                trainer.load_checkpoint(os.path.join(self.model_dir, "checkpoints/task-%03d.pth" % task['id']))
                 representation_functions.append(trainer.generate_udr_repr_function())
-            udr_score_dict = compute_udr(self.dataset, representation_functions, self.random_state)
+
+            udr_fail_count = 0
+            while udr_fail_count < 10:
+                try:
+                    udr_score_dict = compute_udr(self.dataset, representation_functions, self.random_state)
+                    break
+                except:
+                    print("Explorer compute udr fail", udr_fail_count)
+                    udr_fail_count -= -1
+
 
             for i, task in enumerate(tasks):
                 task['score'] = udr_score_dict['model_scores'][i]
@@ -181,7 +190,7 @@ class Explorer(mp.Process):
                 task['id']) +
                     " achieved with following parameters:")
             for i in range(self.epoch.value):
-                f.write("\n" + str(checkpoint['training_params'][i]) + str(checkpoint['scores'][i]))
+                f.write("\n" + str(checkpoint['training_params'][i]))
 
     def saveModelParameters(self, tasks):
         print("Explorer save model parameters")
