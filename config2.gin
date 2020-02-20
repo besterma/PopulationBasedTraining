@@ -8,7 +8,7 @@ pbt_main.worker_size = 1
 pbt_main.random_seed = 0
 pbt_main.start_epoch = %start_epoch
 pbt_main.existing_parameter_dict = None
-pbt_main.model_dir = "/home/disentanglement/Python/PopulationBasedTraining/modeltest/"
+pbt_main.model_dir = "/home/disentanglement/Python/PopulationBasedTraining/modeltest2/"
 
 simple_explorer.trainer_class = @vae_trainer.SimpleUdrVaeTrainer
 simple_explorer.exploit_and_explore_func = @exploit_and_explore

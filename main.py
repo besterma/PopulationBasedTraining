@@ -4,8 +4,9 @@ import numpy as np
 import torch
 import torch.multiprocessing as _mp
 from torch.optim import Adam
-from worker import Worker
-from explorer import Explorer
+
+from explorer import SimpleExplorer
+from worker import SimpleWorker
 import time
 import random
 import pickle
@@ -13,7 +14,7 @@ import gin
 import os
 import sys
 import utils
-from vae_trainer import UdrVaeTrainer, VaeTrainer
+from vae_trainer import UdrVaeTrainer, VaeTrainer, DummyTrainer, SimpleUdrVaeTrainer
 
 sys.path.append('../beta-tcvae')
 #from vae_quant import VAE, UDRVAE
@@ -49,38 +50,60 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
 
     pathlib.Path(os.path.join(model_dir, 'checkpoints')).mkdir(parents=True, exist_ok=True)
     pathlib.Path(os.path.join(model_dir, 'bestmodels')).mkdir(parents=True, exist_ok=True)
-    # pathlib.Path(os.path.join(model_dir, 'latentVariables')).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(os.path.join(model_dir, 'datasets')).mkdir(parents=True, exist_ok=True)
     pathlib.Path(os.path.join(model_dir, 'parameters')).mkdir(parents=True, exist_ok=True)
 
     checkpoint_str = "checkpoints/task-%03d.pth"
+    init_dataset_path = os.path.join(model_dir, "datasets", "dataset_iteration-000.npy")
     print("Create mp queues")
-    population = mp.Queue(maxsize=population_size)
-    finish_tasks = mp.Queue(maxsize=population_size)
-    epoch = mp.Value('i', start_epoch)
+    train_queue = mp.Queue(maxsize=population_size)
+    score_queue = mp.Queue(maxsize=population_size)
+    finished_queue = mp.Queue(maxsize=population_size)
+    is_stop_requested = mp.Value('i', False, lock=False)
     if existing_parameter_dict is None:
         results = dict()
     else:
         with open(existing_parameter_dict, "rb") as pickle_in:
             results = pickle.load(pickle_in)
     for i in range(population_size):
-        population.put(dict(id=i, score=0, mig=0, accuracy=0,
-                            elbo=0, active_units=[], n_active=0,
-                            random_states=generate_random_states()))
-    train_data_path = test_data_path = './data'
+        finished_queue.put(dict(id=i,
+                                dataset_path=init_dataset_path,
+                                model_path=os.path.join(model_dir, "checkpoints", "task-{:03d}.pth".format(i)),
+                                random_states=generate_random_states()))
     print("Create workers")
-    if str(gin.query_parameter("worker.trainer_class")) == "@vae_trainer.VaeTrainer":
+    if str(gin.query_parameter("simple_worker.trainer_class")) == "@vae_trainer.VaeTrainer":
         trainer_class = VaeTrainer
-    elif str(gin.query_parameter("worker.trainer_class")) == "@vae_trainer.UdrVaeTrainer":
+    elif str(gin.query_parameter("simple_worker.trainer_class")) == "@vae_trainer.UdrVaeTrainer":
         trainer_class = UdrVaeTrainer
+    elif str(gin.query_parameter("simple_worker.trainer_class")) == "@vae_trainer.SimpleUdrVaeTrainer":
+        trainer_class = SimpleUdrVaeTrainer
     else:
         trainer_class = VaeTrainer
 
-    workers = [Worker(population, finish_tasks, device, i, gin_string=gin.config_str(), model_dir=model_dir,
-                      score_random_seed=score_random_seed, start_epoch=epoch, trainer_class=trainer_class)
+    allowed_gpu_ids = os.environ.get('CUDA_VISIBLE_DEVICES', None)
+    all_ids = list(map(lambda id: str(id), range(torch.cuda.device_count())))
+    allowed_gpu_ids = all_ids if allowed_gpu_ids is None else allowed_gpu_ids.split(",")
+
+    workers = [SimpleWorker(is_stop_requested,
+                            train_queue,
+                            score_queue,
+                            finished_queue,
+                            gpu_id=allowed_gpu_ids[i % len(allowed_gpu_ids)],
+                            worker_id=i,
+                            gin_string=gin.config_str(),
+                            trainer_class=trainer_class)
                for i in range(worker_size)]
-    workers.append(Explorer(population, finish_tasks, workers[0].device_id, results, generate_random_states(),
-                            model_dir=model_dir, gin_string=gin.config_str(), start_epoch=epoch,
-                            trainer_class=trainer_class))
+    workers.append(SimpleExplorer(is_stop_requested,
+                                  train_queue,
+                                  score_queue,
+                                  finished_queue,
+                                  gpu_id=allowed_gpu_ids[0],
+                                  result_dict=results,
+                                  gin_string=gin.config_str(),
+                                  model_dir=model_dir,
+                                  random_states=generate_random_states(),
+                                  trainer_class=trainer_class))
+
     print("Start workers")
     [w.start() for w in workers]
     print("Wait for workers to finish")
@@ -88,10 +111,15 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
     print("Workers and Explorer finished")
     task = []
     time.sleep(1)
-    while not finish_tasks.empty():
-        task.append(finish_tasks.get())
-    while not population.empty():
-        task.append(population.get())
+    while not finished_queue.empty():
+        task.append(finished_queue.get())
+    while not train_queue.empty():
+        task.append(train_queue.get())
+    while not score_queue.empty():
+        task.append(score_queue.get())
+    finished_queue.close()
+    train_queue.close()
+    score_queue.close()
     task = sorted(task, key=lambda x: x['score'], reverse=True)
     print('best score on', task[0]['id'], 'is', task[0]['score'])
     end = time.time()
@@ -107,8 +135,7 @@ def pbt_main(model_dir, device='cpu', population_size=24, worker_size=8, start_e
         print("score name not found from config file, using default")
         score_name = 'score'
 
-
-    score_dict = {score_name: task[0]['score'], 'mig': task[0]['mig']}
+    score_dict = {score_name: task[0]['score']}
     return task[0]['id'], score_dict
 
 

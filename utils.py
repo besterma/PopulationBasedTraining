@@ -81,6 +81,7 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, 
     """Copy parameters from the better model and the hyperparameters
        and running averages from the corresponding optimizer."""
     # Copy model parameters
+    #TODO only change parts of loaded checkpoint that really changed, no need to create new dict
     print("Running function exploit_and_explore")
     checkpoint = torch.load(top_checkpoint_path, map_location=torch.device('cpu'))
     state_dict = checkpoint['model_state_dict']
@@ -109,3 +110,13 @@ def exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, 
                       scores=scores,
                       random_state=model_random_state)
     torch.save(checkpoint, bot_checkpoint_path)
+
+@gin.configurable(whitelist=['hyper_params', 'perturb_factors'])
+def dummy_exploit_and_explore(top_checkpoint_path, bot_checkpoint_path, hyper_params, random_state,
+                        perturb_factors=(2, 1.2, 0.8, 0.5)):
+    """Copy parameters from the better model and the hyperparameters
+       and running averages from the corresponding optimizer."""
+    # Copy model parameters
+    #TODO only change parts of loaded checkpoint that really changed, no need to create new dict
+    print("Running function exploit_and_explore")
+
